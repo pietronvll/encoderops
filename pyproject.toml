@@ -1,0 +1,20 @@
+[project]
+name = "encoderops"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "ipykernel>=6.29.5",
+    "linear-operator-learning>=0.2.3",
+    "matscipy>=1.1.1",
+    "mdtraj>=1.10.3",
+    "mlcolvar",
+    "torch-geometric>=2.6.1",
+    "torch-scatter>=2.1.2",
+    "tqdm>=4.67.1",
+    "tyro>=0.9.18",
+]
+
+[tool.uv.sources]
+mlcolvar = { git = "https://github.com/luigibonati/mlcolvar.git", rev = "graphs_integration" }
