@@ -31,9 +31,7 @@ class _RegSpectralLoss(torch.nn.Module):
         reg = self.regularization_term(inputs, lagged)
         return loss + reg
 
-class RegSpectralLoss(BaseCV, lightning.LightningModule):
-
-
+class RegSpectralLoss(lightning.LightningModule):
     DEFAULT_BLOCKS = ["norm_in", "nn", "tica"]
     MODEL_BLOCKS = ["nn", "tica"]
 
