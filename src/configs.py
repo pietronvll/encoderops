@@ -16,3 +16,11 @@ class ModelArgs:
     n_layers: int = 2
     n_filters: int = 32
     n_hidden_channels: int = 32
+
+
+@dataclass
+class DataArgs:
+    stride: int = 1000
+    cutoff: float = 8.0
+    remove_isolated_nodes: bool = False
+    system_selection: str | None = None

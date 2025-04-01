@@ -1,4 +1,3 @@
-
 from typing import List
 
 import lightning
@@ -14,28 +13,26 @@ from src.utils import normalize_linear_layer
 
 
 class EvolutionOperator(lightning.LightningModule):
-    def __init__(self,
-            cutoff: float,
-            atomic_numbers: List[int],  
-            model_args: ModelArgs
-        ):
+    def __init__(self, cutoff: float, atomic_numbers: List[int], model_args: ModelArgs):
         super().__init__()
 
         self.model_args = model_args
+        self.automatic_optimization = False
 
-        encoder = SchNetModel(n_out=model_args.latent_dim,
+        encoder = SchNetModel(
+            n_out=model_args.latent_dim,
             cutoff=cutoff,
             atomic_numbers=atomic_numbers,
             n_bases=model_args.n_bases,
             n_layers=model_args.n_layers,
             n_filters=model_args.n_filters,
-            n_hidden_channels=model_args.n_hidden_channels
+            n_hidden_channels=model_args.n_hidden_channels,
         )
         if model_args.simnorm_dim > 0:
             simnorm = lol.nn.SimNorm(dim=model_args.simnorm_dim)
             self.encoder = torch.nn.Sequential(encoder, simnorm)
         else:
-            self.encoder = encoder    
+            self.encoder = encoder
 
         self.linear = torch.nn.Linear(
             model_args.latent_dim,
@@ -45,9 +42,9 @@ class EvolutionOperator(lightning.LightningModule):
         self.loss = RegSpectralLoss(reg=model_args.regularization)
 
     def forward_nn(self, x: torch.Tensor, lagged: bool = False) -> torch.Tensor:
-        x = self.nn(x)
+        x = self.encoder(x)
         if lagged:
-            x = self.linar(x)
+            x = self.linear(x)
         return x
 
     def training_step(self, train_batch, batch_idx):
@@ -57,25 +54,28 @@ class EvolutionOperator(lightning.LightningModule):
         3) Compute TICA
         """
         # =================get data===================
-        x_t = self._setup_graph_data(train_batch, key='data_list')
-        x_lag = self._setup_graph_data(train_batch, key='data_list_lag')
+        x_t = self._setup_graph_data(train_batch, key="data_list")
+        x_lag = self._setup_graph_data(train_batch, key="data_list_lag")
 
         # =================forward====================
         f_t = self.forward_nn(x_t)
         f_lag = self.forward_nn(x_lag, lagged=True)
+        # optimization
+        for opt in self.optimizers():
+            opt.zero_grad()
         # ===================loss=====================
-        loss = self.loss_fn(f_t, f_lag)
+        loss = self.loss(f_t, f_lag)
+        self.manual_backward(loss)
+        for opt in self.optimizers():
+            opt.step()
         # ====================log=====================
         name = "train" if self.training else "valid"
         with torch.no_grad():
-            loss_noreg= self.loss_fn.noreg(f_t, f_lag)
-        loss_dict = {
-            f"{name}_loss": loss,
-            f"{name}_loss_noreg": loss_noreg
-            }
+            loss_noreg = self.loss.noreg(f_t, f_lag)
+        loss_dict = {f"{name}_loss": loss, f"{name}_loss_noreg": loss_noreg}
         self.log_dict(dict(loss_dict), on_step=True, on_epoch=True)
         return loss
-    
+
     def on_after_backward(self):
         if self.model_args.normalize_lin:
             normalize_linear_layer(self.linear)
@@ -111,11 +111,10 @@ class EvolutionOperator(lightning.LightningModule):
             },
             {"optimizer": linear_opt},
         )
-    
-    
+
     @staticmethod
-    def _setup_graph_data(train_batch, key : str='data_list'):
+    def _setup_graph_data(train_batch, key: str = "data_list"):
         data = train_batch[key]
-        data['positions'].requires_grad_(True)
-        data['node_attrs'].requires_grad_(True)
+        data["positions"].requires_grad_(True)
+        data["node_attrs"].requires_grad_(True)
         return data
