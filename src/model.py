@@ -5,7 +5,7 @@ import linear_operator_learning as lol
 import torch
 from mlcolvar.core.nn.graph.schnet import SchNetModel
 from torch.optim import Adam, AdamW
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 
 from src.configs import ModelArgs
 from src.loss import RegSpectralLoss
@@ -67,11 +67,27 @@ class EvolutionOperator(lightning.LightningModule):
             )
         for opt in self.optimizers():
             opt.step()
+        # single scheduler
+        sch = self.lr_schedulers()
+        if self.trainer.is_last_batch:
+            sch.step()
         # ====================log=====================
         with torch.no_grad():
             loss_noreg = self.loss.noreg(f_t, f_lag)
-        loss_dict = {"train_loss": -loss, "train_loss_noreg": -loss_noreg}
-        self.log_dict(dict(loss_dict), on_step=True, on_epoch=True, prog_bar=True)
+        loss_dict = {
+            "train_loss": -loss,
+            "train_loss_noreg": -loss_noreg,
+        }
+        self.log_dict(
+            dict(loss_dict), on_step=True, on_epoch=True, sync_dist=True, prog_bar=True
+        )
+        self.log(
+            "learning_rate",
+            sch.get_last_lr()[0],
+            on_step=False,
+            on_epoch=True,
+            prog_bar=False,
+        )
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -97,7 +113,7 @@ class EvolutionOperator(lightning.LightningModule):
             "valid_loss_noreg": -loss_noreg,
             "effective_rank": effective_rank,
         }
-        self.log_dict(loss_dict, on_step=True, on_epoch=True, sync_dist=True)
+        self.log_dict(loss_dict, on_step=False, on_epoch=True, sync_dist=True)
         return loss
 
     def on_after_backward(self):
@@ -119,10 +135,31 @@ class EvolutionOperator(lightning.LightningModule):
             lr=self.model_args.encoder_lr,
         )
         linear_opt = Adam(self.linear.parameters(), lr=self.model_args.linear_lr)
-        scheduler = CosineAnnealingLR(
+        warmup_sch = LinearLR(
             encoder_opt,
-            T_max=self.model_args.epochs,
+        )
+
+        total_epochs = self.model_args.epochs
+        warmup_epochs = int(0.1 * total_epochs)  # 10% of total epochs for warmup
+
+        warmup_sch = LinearLR(
+            encoder_opt,
+            start_factor=1e-5 / self.model_args.encoder_lr,  # Scale from 1e-5
+            end_factor=1.0,  # To initial LR
+            total_iters=warmup_epochs,
+        )
+
+        # Cosine annealing for remaining epochs
+        cos_sch = CosineAnnealingLR(
+            encoder_opt,
+            T_max=total_epochs - warmup_epochs,  # Remaining 90% of epochs
             eta_min=self.model_args.min_encoder_lr,  # Minimum learning rate
+        )
+        # Sequential scheduler that first runs warmup, then cosine decay
+        scheduler = SequentialLR(
+            encoder_opt,
+            schedulers=[warmup_sch, cos_sch],
+            milestones=[warmup_epochs],  # Switch to cosine after warmup completes
         )
 
         return (
