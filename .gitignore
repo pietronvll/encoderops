@@ -8,3 +8,6 @@ wheels/
 
 # Virtual environments
 .venv
+preprocessed_data
+encoderops_chignolin
+wandb

@@ -48,11 +48,6 @@ class EvolutionOperator(lightning.LightningModule):
         return x
 
     def training_step(self, train_batch, batch_idx):
-        """Compute and return the training loss and record metrics.
-        1) Calculate the NN output
-        2) Remove average (inside forward_nn)
-        3) Compute TICA
-        """
         # =================get data===================
         x_t = self._setup_graph_data(train_batch, key="data_list")
         x_lag = self._setup_graph_data(train_batch, key="data_list_lag")
@@ -66,14 +61,43 @@ class EvolutionOperator(lightning.LightningModule):
         # ===================loss=====================
         loss = self.loss(f_t, f_lag)
         self.manual_backward(loss)
+        if self.model_args.max_grad_norm is not None:
+            torch.nn.utils.clip_grad_norm_(
+                self.encoder.parameters(), max_norm=self.model_args.max_grad_norm
+            )
         for opt in self.optimizers():
             opt.step()
         # ====================log=====================
-        name = "train" if self.training else "valid"
         with torch.no_grad():
             loss_noreg = self.loss.noreg(f_t, f_lag)
-        loss_dict = {f"{name}_loss": loss, f"{name}_loss_noreg": loss_noreg}
-        self.log_dict(dict(loss_dict), on_step=True, on_epoch=True)
+        loss_dict = {"train_loss": -loss, "train_loss_noreg": -loss_noreg}
+        self.log_dict(dict(loss_dict), on_step=True, on_epoch=True, prog_bar=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        # =================get data===================
+        x_t = self._setup_graph_data(batch, key="data_list")
+        x_lag = self._setup_graph_data(batch, key="data_list_lag")
+
+        # =================forward====================
+        f_t = self.forward_nn(x_t)
+        f_lag = self.forward_nn(x_lag, lagged=True)
+        # ===================loss=====================
+        loss = self.loss(f_t, f_lag)
+        loss_noreg = self.loss.noreg(f_t, f_lag)
+
+        # Compute effective rank
+        T = self.linear.weight
+        # Compute the effective rank of T, which is the exponential of the entropy of the singular values
+        s = torch.linalg.svdvals(T)
+        s /= s.sum()
+        effective_rank = torch.exp(-torch.sum(s * torch.log(s)))
+        loss_dict = {
+            "valid_loss": -loss,
+            "valid_loss_noreg": -loss_noreg,
+            "effective_rank": effective_rank,
+        }
+        self.log_dict(loss_dict, on_step=True, on_epoch=True, sync_dist=True)
         return loss
 
     def on_after_backward(self):
@@ -106,7 +130,6 @@ class EvolutionOperator(lightning.LightningModule):
                 "optimizer": encoder_opt,
                 "lr_scheduler": {
                     "scheduler": scheduler,
-                    "monitor": "metric_to_track",
                 },
             },
             {"optimizer": linear_opt},

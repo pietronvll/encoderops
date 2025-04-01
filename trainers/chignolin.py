@@ -1,0 +1,63 @@
+# uv run --env-file=.env -- python -m  trainers.chignolin [ARGS]
+import os
+import pickle
+from pathlib import Path
+
+import tyro
+from lightning import Trainer
+from lightning.pytorch.loggers import WandbLogger
+from mlcolvar.data import DictModule
+
+from src.configs import Config, default_configs
+from src.data import get_dataset
+from src.model import EvolutionOperator
+
+
+def main(config: Config):
+    # Data Loading
+    data_path = Path(os.environ["CHIG_DATA_PATH"])
+    trajectory_files = [str(traj) for traj in data_path.glob("*.dcd")]
+    top = next(data_path.glob("*.pdb")).__str__()
+    name = next(data_path.glob("*.pdb")).stem
+    lagtime = config.data_args.lagtime
+    prepro_data_path = (
+        Path(__file__).parent / f"preprocessed_data/{name}-lag{lagtime}.pkl"
+    )
+
+    # If the file exists then load it with pickle, otherwise call get_dataset and save it
+    if prepro_data_path.exists():
+        with open(prepro_data_path, "rb") as f:
+            dataset = pickle.load(f)
+
+    else:
+        dataset = get_dataset(trajectory_files, top, config.data_args)
+        prepro_data_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(prepro_data_path, "wb") as f:
+            pickle.dump(dataset, f)
+
+    datamodule = DictModule(dataset, batch_size=config.data_args.batch_size)
+
+    # Model Init
+    model = EvolutionOperator(
+        cutoff=dataset.metadata["cutoff"],
+        atomic_numbers=dataset.metadata["z_table"],
+        model_args=config.model_args,
+    )
+
+    # Trainer
+    trainer = Trainer(
+        logger=WandbLogger(project="encoderops_chignolin", entity="csml"),
+        enable_checkpointing=True,
+        accelerator="cuda",
+        devices=8,
+        max_epochs=config.model_args.epochs,
+        enable_model_summary=True,
+        log_every_n_steps=5,
+    )
+
+    trainer.fit(model, datamodule)
+
+
+if __name__ == "__main__":
+    config = tyro.extras.overridable_config_cli(default_configs)
+    main(config)

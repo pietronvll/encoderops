@@ -1,4 +1,5 @@
 1. Load data using their dataloader and lagged dataloader 
+2. Model can be trained. Create proper training script
 
 
 ## Notes

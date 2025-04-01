@@ -20,7 +20,7 @@ def get_dataset(
     top: str,
     data_args: DataArgs,
 ):
-    traj = mdtraj_load(trajectory_files, top, data_args.stride)
+    traj = mdtraj_load(trajectory_files, top, data_args.lagtime)
     # Create configs
     configs, z_table, atom_names = traj_to_confs(
         traj, system_selection=data_args.system_selection
@@ -33,7 +33,7 @@ def get_dataset(
         0.0,
         atom_names,
         data_args.remove_isolated_nodes,
-        False,
+        show_progress=True,
     )
     # Lagged dataset (?)
     timelagged_dataset = create_timelagged_dataset(dataset, progress_bar=False)
