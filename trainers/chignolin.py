@@ -6,7 +6,7 @@ from pathlib import Path
 import tyro
 from lightning import Trainer
 from lightning.pytorch.loggers import WandbLogger
-from mlcolvar.data import DictModule
+from torch_geometric.loader import DataLoader
 
 from src.configs import Config, default_configs
 from src.data import get_dataset
@@ -21,7 +21,7 @@ def main(config: Config):
     name = next(data_path.glob("*.pdb")).stem
     lagtime = config.data_args.lagtime
     prepro_data_path = (
-        Path(__file__).parent / f"preprocessed_data/{name}-lag{lagtime}.pkl"
+        Path(__file__).parent.parent / f"preprocessed_data/{name}-lag{lagtime}.pkl"
     )
 
     # If the file exists then load it with pickle, otherwise call get_dataset and save it
@@ -35,7 +35,7 @@ def main(config: Config):
         with open(prepro_data_path, "wb") as f:
             pickle.dump(dataset, f)
 
-    datamodule = DictModule(dataset, batch_size=config.data_args.batch_size)
+    train_dataloader = DataLoader(dataset, batch_size=config.data_args.batch_size)
 
     # Model Init
     model = EvolutionOperator(
@@ -49,13 +49,13 @@ def main(config: Config):
         logger=WandbLogger(project="encoderops_chignolin", entity="csml"),
         enable_checkpointing=True,
         accelerator="cuda",
-        devices=8,
+        devices=config.num_devices,
         max_epochs=config.model_args.epochs,
         enable_model_summary=True,
         log_every_n_steps=5,
     )
 
-    trainer.fit(model, datamodule)
+    trainer.fit(model, train_dataloaders=train_dataloader)
 
 
 if __name__ == "__main__":

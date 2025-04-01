@@ -4,6 +4,7 @@ from dataclasses import dataclass
 @dataclass
 class ModelArgs:
     latent_dim: int
+    linear_lora: int
     encoder_lr: float
     linear_lr: float
     min_encoder_lr: float
@@ -11,11 +12,12 @@ class ModelArgs:
     max_grad_norm: float | None
     normalize_lin: bool
     regularization: float
-    simnorm_dim: int = 8
-    n_bases: int = 12
-    n_layers: int = 2
+    simnorm_dim: int = 4
+    n_bases: int = 16
+    n_layers: int = 3
     n_filters: int = 32
-    n_hidden_channels: int = 32
+    n_hidden_channels: int = 64
+    save_embeddings: bool = False
 
 
 @dataclass
@@ -31,6 +33,7 @@ class DataArgs:
 class Config:
     model_args: ModelArgs
     data_args: DataArgs
+    num_devices: int = 1
 
 
 default_configs = {
@@ -38,14 +41,16 @@ default_configs = {
         "Chignolin dev configs",
         Config(
             model_args=ModelArgs(
-                latent_dim=128,
+                latent_dim=16,
+                linear_lora=4,
                 encoder_lr=1e-3,
-                linear_lr=1e-3,
+                linear_lr=1e-2,
                 min_encoder_lr=1e-5,
                 epochs=50,
                 max_grad_norm=None,
-                normalize_lin=True,
+                normalize_lin=False,
                 regularization=1e-5,
+                save_embeddings=True,
             ),
             data_args=DataArgs(
                 lagtime=500, cutoff=6.0, system_selection="all and not type H"
@@ -56,18 +61,23 @@ default_configs = {
         "Chignolin production configs",
         Config(
             model_args=ModelArgs(
-                latent_dim=512,
+                latent_dim=128,
+                linear_lora=16,
                 encoder_lr=1e-3,
                 linear_lr=1e-2,
                 min_encoder_lr=1e-5,
                 epochs=500,
                 max_grad_norm=0.1,
-                normalize_lin=True,
-                regularization=1e-5,
+                normalize_lin=False,
+                regularization=1e-4,
             ),
             data_args=DataArgs(
-                lagtime=100, cutoff=8.0, system_selection="all and not type H"
+                lagtime=100,
+                cutoff=8.0,
+                system_selection="all and not type H",
+                batch_size=128,
             ),
+            num_devices=8,
         ),
     ),
 }

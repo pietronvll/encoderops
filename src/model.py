@@ -1,15 +1,16 @@
+from pathlib import Path
 from typing import List
 
 import lightning
-import linear_operator_learning as lol
 import torch
+from linear_operator_learning.nn import SimNorm
+from loguru import logger
 from mlcolvar.core.nn.graph.schnet import SchNetModel
 from torch.optim import Adam, AdamW
-from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
+from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from src.configs import ModelArgs
 from src.loss import RegSpectralLoss
-from src.utils import normalize_linear_layer
 
 
 class EvolutionOperator(lightning.LightningModule):
@@ -28,18 +29,41 @@ class EvolutionOperator(lightning.LightningModule):
             n_filters=model_args.n_filters,
             n_hidden_channels=model_args.n_hidden_channels,
         )
-        if model_args.simnorm_dim > 0:
-            simnorm = lol.nn.SimNorm(dim=model_args.simnorm_dim)
-            self.encoder = torch.nn.Sequential(encoder, simnorm)
-        else:
-            self.encoder = encoder
 
-        self.linear = torch.nn.Linear(
+        batch_norm = torch.nn.BatchNorm1d(
+            num_features=model_args.latent_dim, affine=False
+        )
+
+        if model_args.simnorm_dim > 0:
+            simnorm = SimNorm(dim=model_args.simnorm_dim)
+            self.encoder = torch.nn.Sequential(encoder, batch_norm, simnorm)
+        else:
+            self.encoder = torch.nn.Sequential(encoder, batch_norm)
+
+        linear_l = torch.nn.Linear(
             model_args.latent_dim,
+            model_args.linear_lora,
+            bias=False,
+        )
+        linear_r = torch.nn.Linear(
+            model_args.linear_lora,
             model_args.latent_dim,
             bias=False,
         )
+        self.linear = torch.nn.Sequential(linear_l, linear_r)
+
         self.loss = RegSpectralLoss(reg=model_args.regularization)
+        self.embeddings = {"t": [], "lag": []}
+
+    def effective_rank(self):
+        # Compute effective rank
+        T_1 = self.linear[1].weight
+        T_0 = self.linear[0].weight
+        T = T_1 @ T_0
+        # Compute the effective rank of T, which is the exponential of the entropy of the singular values
+        s = torch.linalg.svdvals(T)
+        s /= s.sum()
+        return torch.exp(-torch.sum(s * torch.log(s)))
 
     def forward_nn(self, x: torch.Tensor, lagged: bool = False) -> torch.Tensor:
         x = self.encoder(x)
@@ -48,35 +72,48 @@ class EvolutionOperator(lightning.LightningModule):
         return x
 
     def training_step(self, train_batch, batch_idx):
-        # =================get data===================
+        # data
         x_t = self._setup_graph_data(train_batch, key="data_list")
         x_lag = self._setup_graph_data(train_batch, key="data_list_lag")
-
-        # =================forward====================
+        # forward
         f_t = self.forward_nn(x_t)
         f_lag = self.forward_nn(x_lag, lagged=True)
-        # optimization
+        if self.model_args.save_embeddings:
+            self.embeddings["t"].append((f_t.detach().cpu()))
+            self.embeddings["lag"].append((f_lag.detach().cpu()))
+        # opt
+        # opt:zero_grad
         for opt in self.optimizers():
             opt.zero_grad()
-        # ===================loss=====================
+        # opt:loss
         loss = self.loss(f_t, f_lag)
+        # opt:backard
         self.manual_backward(loss)
+        # opt:grad_clip
         if self.model_args.max_grad_norm is not None:
             torch.nn.utils.clip_grad_norm_(
                 self.encoder.parameters(), max_norm=self.model_args.max_grad_norm
             )
+        # opt:step
         for opt in self.optimizers():
             opt.step()
-        # single scheduler
+        # opt:linear_norm
+        if self.model_args.normalize_lin:
+            raise NotImplementedError()
+            # normalize_linear_layer(self.linear)
+        # opt:scheduler_step
         sch = self.lr_schedulers()
         if self.trainer.is_last_batch:
             sch.step()
-        # ====================log=====================
+
+        # log
         with torch.no_grad():
             loss_noreg = self.loss.noreg(f_t, f_lag)
+            effective_rank = self.effective_rank()
         loss_dict = {
             "train_loss": -loss,
             "train_loss_noreg": -loss_noreg,
+            "effective_rank": effective_rank,
         }
         self.log_dict(
             dict(loss_dict), on_step=True, on_epoch=True, sync_dist=True, prog_bar=True
@@ -90,35 +127,28 @@ class EvolutionOperator(lightning.LightningModule):
         )
         return loss
 
-    def validation_step(self, batch, batch_idx):
-        # =================get data===================
-        x_t = self._setup_graph_data(batch, key="data_list")
-        x_lag = self._setup_graph_data(batch, key="data_list_lag")
+    def on_train_epoch_end(self):
+        if self.current_epoch == 0:
+            logger.info(f"Checkpoints at {self.trainer.checkpoint_callback.dirpath}")
+        if not self.model_args.save_embeddings:
+            return
 
-        # =================forward====================
-        f_t = self.forward_nn(x_t)
-        f_lag = self.forward_nn(x_lag, lagged=True)
-        # ===================loss=====================
-        loss = self.loss(f_t, f_lag)
-        loss_noreg = self.loss.noreg(f_t, f_lag)
+        # to_save = {"linear": self.linear.weight.detach().cpu()}
+        to_save = {}
+        for k, v in self.embeddings.items():
+            to_save[k] = torch.cat(v)
 
-        # Compute effective rank
-        T = self.linear.weight
-        # Compute the effective rank of T, which is the exponential of the entropy of the singular values
-        s = torch.linalg.svdvals(T)
-        s /= s.sum()
-        effective_rank = torch.exp(-torch.sum(s * torch.log(s)))
-        loss_dict = {
-            "valid_loss": -loss,
-            "valid_loss_noreg": -loss_noreg,
-            "effective_rank": effective_rank,
-        }
-        self.log_dict(loss_dict, on_step=False, on_epoch=True, sync_dist=True)
-        return loss
+        dirpath = Path(self.trainer.checkpoint_callback.dirpath).parent
+        act_path = dirpath / f"embeddings/epoch={self.current_epoch}.pt"
+        act_path.parent.mkdir(parents=True, exist_ok=True)
+        # Save to disk
+        torch.save(
+            to_save,
+            act_path.__str__(),
+        )
 
-    def on_after_backward(self):
-        if self.model_args.normalize_lin:
-            normalize_linear_layer(self.linear)
+        # Clear for next epoch
+        self.embeddings = {"t": [], "lag": []}
 
     def configure_optimizers(self):
         """
@@ -135,31 +165,12 @@ class EvolutionOperator(lightning.LightningModule):
             lr=self.model_args.encoder_lr,
         )
         linear_opt = Adam(self.linear.parameters(), lr=self.model_args.linear_lr)
-        warmup_sch = LinearLR(
-            encoder_opt,
-        )
-
-        total_epochs = self.model_args.epochs
-        warmup_epochs = int(0.1 * total_epochs)  # 10% of total epochs for warmup
-
-        warmup_sch = LinearLR(
-            encoder_opt,
-            start_factor=1e-5 / self.model_args.encoder_lr,  # Scale from 1e-5
-            end_factor=1.0,  # To initial LR
-            total_iters=warmup_epochs,
-        )
 
         # Cosine annealing for remaining epochs
-        cos_sch = CosineAnnealingLR(
+        scheduler = CosineAnnealingLR(
             encoder_opt,
-            T_max=total_epochs - warmup_epochs,  # Remaining 90% of epochs
+            T_max=self.model_args.epochs,  # Remaining 90% of epochs
             eta_min=self.model_args.min_encoder_lr,  # Minimum learning rate
-        )
-        # Sequential scheduler that first runs warmup, then cosine decay
-        scheduler = SequentialLR(
-            encoder_opt,
-            schedulers=[warmup_sch, cos_sch],
-            milestones=[warmup_epochs],  # Switch to cosine after warmup completes
         )
 
         return (
