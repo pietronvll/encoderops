@@ -9,15 +9,23 @@ from mlcolvar.core.nn.graph.schnet import SchNetModel
 from torch.optim import Adam, AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
-from src.configs import ModelArgs
+from src.configs import DataArgs, ModelArgs
 from src.loss import RegSpectralLoss
 
 
 class EvolutionOperator(lightning.LightningModule):
-    def __init__(self, cutoff: float, atomic_numbers: List[int], model_args: ModelArgs):
+    def __init__(
+        self,
+        cutoff: float,
+        atomic_numbers: List[int],
+        model_args: ModelArgs,
+        data_args: DataArgs,
+    ):
         super().__init__()
+        self.save_hyperparameters()
 
         self.model_args = model_args
+        self.data_args = data_args
         self.automatic_optimization = False
 
         encoder = SchNetModel(

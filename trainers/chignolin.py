@@ -5,6 +5,7 @@ from pathlib import Path
 
 import tyro
 from lightning import Trainer
+from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 from torch_geometric.loader import DataLoader
 
@@ -35,19 +36,24 @@ def main(config: Config):
         with open(prepro_data_path, "wb") as f:
             pickle.dump(dataset, f)
 
-    train_dataloader = DataLoader(dataset, batch_size=config.data_args.batch_size)
+    train_dataloader = DataLoader(
+        dataset, batch_size=config.data_args.batch_size, shuffle=True
+    )
 
     # Model Init
     model = EvolutionOperator(
         cutoff=dataset.metadata["cutoff"],
         atomic_numbers=dataset.metadata["z_table"],
         model_args=config.model_args,
+        data_args=config.data_args,
     )
 
+    # saves top-K checkpoints based on "val_loss" metric
+    checkpoint_callback = ModelCheckpoint(every_n_epochs=5, save_top_k=-1)
     # Trainer
     trainer = Trainer(
         logger=WandbLogger(project="encoderops_chignolin", entity="csml"),
-        enable_checkpointing=True,
+        callbacks=[checkpoint_callback],
         accelerator="cuda",
         devices=config.num_devices,
         max_epochs=config.model_args.epochs,
