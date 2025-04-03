@@ -7,7 +7,7 @@ from linear_operator_learning.nn import SimNorm
 from loguru import logger
 from mlcolvar.core.nn.graph.schnet import SchNetModel
 from torch.optim import Adam, AdamW
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import ConstantLR, CosineAnnealingLR, SequentialLR
 
 from src.configs import DataArgs, ModelArgs
 from src.loss import RegSpectralLoss
@@ -174,11 +174,19 @@ class EvolutionOperator(lightning.LightningModule):
         )
         linear_opt = Adam(self.linear.parameters(), lr=self.model_args.linear_lr)
 
-        # Cosine annealing for remaining epochs
-        scheduler = CosineAnnealingLR(
+        # Cosine annealing for half of the epochs and then constant.
+        decay_epochs = self.model_args.epochs // 2
+        decay_sch = CosineAnnealingLR(
             encoder_opt,
-            T_max=self.model_args.epochs,  # Remaining 90% of epochs
+            T_max=decay_epochs,  # Remaining 90% of epochs
             eta_min=self.model_args.min_encoder_lr,  # Minimum learning rate
+        )
+        constant_sch = ConstantLR(encoder_opt, factor=1.0)
+
+        scheduler = SequentialLR(
+            encoder_opt,
+            schedulers=[decay_sch, constant_sch],
+            milestones=[decay_epochs],
         )
 
         return (

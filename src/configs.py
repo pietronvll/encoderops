@@ -73,8 +73,8 @@ default_configs = {
             data_args=DataArgs(
                 lagtime=50,
                 cutoff=7.0,
-                # system_selection="all and not type H",
-                system_selection="name CA",
+                system_selection="all and not type H",
+                # system_selection="name CA",
                 batch_size=128,
             ),
             num_devices=4,
