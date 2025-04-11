@@ -64,7 +64,7 @@ default_configs = {
                 encoder_lr=1e-2,
                 linear_lr=1e-2,
                 min_encoder_lr=1e-3,
-                epochs=500,
+                epochs=100,
                 max_grad_norm=0.2,
                 normalize_lin=False,
                 regularization=1e-4,
@@ -77,7 +77,7 @@ default_configs = {
                 # system_selection="name CA",
                 batch_size=128,
             ),
-            num_devices=4,
+            num_devices=2,
         ),
     ),
 }

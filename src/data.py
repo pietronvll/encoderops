@@ -193,4 +193,3 @@ def create_timelagged_dataset(
             dataset["data_list_lag"][i]["weight"] = w_lag[i]
 
         return dataset
-        return dataset

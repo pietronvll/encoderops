@@ -5,7 +5,7 @@
 ## Notes
 ### Installation
 ```bash
-uv add git+https://github.com/luigibonati/mlcolvar.git@graphs_integration 
-uv add tyro linear_operator_learning torch_geometric mdtraj matscipy
-uv add torch-scatter --no-build-isolation
+uv pip install torch setuptools
+uv pip install torch-scatter --no-build-isolation
+uv sync
 ```

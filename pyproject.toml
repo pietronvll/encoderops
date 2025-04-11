@@ -7,6 +7,7 @@ requires-python = ">=3.11"
 dependencies = [
     "ipykernel>=6.29.5",
     "linear-operator-learning>=0.2.3",
+    "lmdb>=1.6.2",
     "loguru>=0.7.3",
     "matscipy>=1.1.1",
     "mdtraj>=1.10.3",
