@@ -1,49 +1,35 @@
 # uv run --env-file=.env -- python -m  trainers.chignolin [ARGS]
-import os
-import pickle
-from pathlib import Path
 
 import tyro
 from lightning import Trainer
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
+from loguru import logger
 from torch_geometric.loader import DataLoader
 
 from src.configs import Config, default_configs
-from src.data import get_dataset
+from src.data import DESRESDataset
 from src.model import EvolutionOperator
 
 
 def main(config: Config):
     # Data Loading
-    data_path = Path(os.environ["CHIG_DATA_PATH"])
-    trajectory_files = [str(traj) for traj in data_path.glob("*.dcd")]
-    top = next(data_path.glob("*.pdb")).__str__()
-    name = next(data_path.glob("*.pdb")).stem
-    lagtime = config.data_args.lagtime
-    prepro_data_path = (
-        Path(__file__).parent.parent / f"preprocessed_data/{name}-lag{lagtime}.pkl"
+    dataset = DESRESDataset(
+        config.data_args.protein_id,
+        traj_id=config.data_args.traj_id,
+        lagtime=config.data_args.lagtime,
     )
-
-    # If the file exists then load it with pickle, otherwise call get_dataset and save it
-    if prepro_data_path.exists():
-        with open(prepro_data_path, "rb") as f:
-            dataset = pickle.load(f)
-
-    else:
-        dataset = get_dataset(trajectory_files, top, config.data_args)
-        prepro_data_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(prepro_data_path, "wb") as f:
-            pickle.dump(dataset, f)
-
+    logger.info(
+        f"Loaded dataset {dataset.protein_id}-{dataset.traj_id} | cutoff {dataset.cutoff} Ang | lagtime {dataset.lagtime_ns} ns"
+    )
     train_dataloader = DataLoader(
-        dataset, batch_size=config.data_args.batch_size, shuffle=True
+        dataset, batch_size=config.data_args.batch_size, shuffle=True, num_workers=8
     )
 
     # Model Init
     model = EvolutionOperator(
-        cutoff=dataset.metadata["cutoff"],
-        atomic_numbers=dataset.metadata["z_table"],
+        cutoff=dataset.cutoff,
+        atomic_numbers=dataset.z_table.zs,
         model_args=config.model_args,
         data_args=config.data_args,
     )

@@ -1,8 +1,9 @@
+import json
 import os
 import pickle
 from functools import lru_cache
+from pathlib import Path
 
-import lmdb
 import mdtraj
 from mlcolvar.utils.io import (
     _configures_from_trajectory,
@@ -10,6 +11,8 @@ from mlcolvar.utils.io import (
     _z_table_from_top,
 )
 from torch.utils.data import Dataset
+
+import lmdb
 
 
 def traj_to_confs(traj: mdtraj.Trajectory, system_selection: str | None = None):
@@ -28,40 +31,85 @@ def mdtraj_load(trajectory_files: list[str], top: str, stride: int = 1000):
 class DESRESDataset(Dataset):
     def __init__(self, protein_id: str, traj_id: int = 0, lagtime: int = 1):
         super().__init__()
-        dataset_path = (
-            os.environ("DATA_PATH")
-            / f"DESRES-Trajectory_{protein_id}-{traj_id}-protein/{protein_id}-{traj_id}-protein/lmdb/{protein_id}-{traj_id}-protein.lmdb"
-        )
-        assert dataset_path.exists()
+        lmdb_path = Path(os.environ["LMDB_PATH"])
+        dataset_path = lmdb_path / f"{protein_id}-{traj_id}-protein.lmdb"
+        metadata_path = lmdb_path / f"metadata-{protein_id}-{traj_id}-protein.json"
         map_size = 10_995_116_277_760  # 1 TB
-        self.env = lmdb.open(self.lmdb_path, map_size=map_size, subdir=False)
+        self.env = lmdb.open(
+            dataset_path.__str__(),
+            map_size=map_size,
+            subdir=False,
+            readonly=True,
+            lock=False,
+        )
         self.lagtime = lagtime
+        self._metadata = json.load(open(metadata_path, "r"))
+        self.protein_id = protein_id
+        self.traj_id = traj_id
+        self.length = self._load_length()
+
+    def _load_length(self):
+        item_key = "__len__".encode()
+        with self.env.begin(write=False) as txn:
+            data_binary = txn.get(item_key)
+            if data_binary is None:
+                raise KeyError("Key '__len__' not found in LMDB")
+            return pickle.loads(data_binary) - self.lagtime
+
+    @property
+    def z_table(self):
+        item_key = "z_table".encode()
+        with self.env.begin(write=False) as txn:
+            data_binary = txn.get(item_key)
+            if data_binary is None:
+                raise KeyError("Key 'z_table' not found in LMDB")
+            return pickle.loads(data_binary)
+
+    @property
+    def cutoff(self):
+        return self._metadata["cutoff"]
+
+    @property
+    def lagtime_ns(self):
+        return self.lagtime * self._metadata["lagtime_ns"]
+
+    @property
+    def system_selection(self):
+        return self._metadata["system_selection"]
+
+    def __len__(self):
+        return self.length - self.lagtime
 
     @lru_cache(maxsize=10000)  # Cache recently used items
-    def _get_lmdb_item(self, key, idx):
+    def _get_lmdb_item(self, idx):
         """Get a specific item from LMDB with caching"""
         if self.env is None:
             raise RuntimeError("LMDB environment not initialized")
 
-        item_key = f"{key}_{idx}".encode()
+        item_key = f"item_{idx}".encode()
+        item_lagged_key = f"item_{idx + self.lagtime}".encode()
         with self.env.begin(write=False) as txn:
             data_binary = txn.get(item_key)
-            if data_binary is None:
-                raise KeyError(f"Key '{key}' at index {idx} not found in LMDB")
-            return pickle.loads(data_binary)
+            data_lagged_binary = txn.get(item_lagged_key)
+            if (data_binary is None) or (data_lagged_binary is None):
+                raise KeyError(
+                    f"Item at index {idx}/{idx + self.lagtime} not found in LMDB"
+                )
+            return pickle.loads(data_binary), pickle.loads(data_lagged_binary)
 
     def __getitem__(self, index):
-        if isinstance(index, str):
-            return self._dictionary[index]
-        else:
-            slice_dict = {}
-            for key, val in self._dictionary.items():
-                try:
-                    slice_dict[key] = val[index]
-                except:
-                    slice_dict[key] = list(itemgetter(*index)(val))
-            return slice_dict
+        result_dict = {}
+        if isinstance(index, slice):
+            # Handle slice
+            index = range(*index.indices(self.__len__()))
+            raise NotImplementedError
+        elif isinstance(index, (list, tuple)):
+            # Handle list of indices
+            raise NotImplementedError
 
-    def __len__(self):
-        value = next(iter(self._dictionary.values()))
-        return len(value)
+        data = self._get_lmdb_item(index)
+        result_dict = {
+            "item": data[0],
+            "item_lag": data[1],
+        }
+        return result_dict

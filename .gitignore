@@ -9,5 +9,6 @@ wheels/
 # Virtual environments
 .venv
 preprocessed_data
+lmdb
 encoderops_chignolin
 wandb

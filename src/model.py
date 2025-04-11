@@ -81,8 +81,8 @@ class EvolutionOperator(lightning.LightningModule):
 
     def training_step(self, train_batch, batch_idx):
         # data
-        x_t = self._setup_graph_data(train_batch, key="data_list")
-        x_lag = self._setup_graph_data(train_batch, key="data_list_lag")
+        x_t = self._setup_graph_data(train_batch)
+        x_lag = self._setup_graph_data(train_batch, key="item_lag")
         # forward
         f_t = self.forward_nn(x_t)
         f_lag = self.forward_nn(x_lag, lagged=True)
@@ -193,7 +193,7 @@ class EvolutionOperator(lightning.LightningModule):
         )
 
     @staticmethod
-    def _setup_graph_data(train_batch, key: str = "data_list"):
+    def _setup_graph_data(train_batch, key: str = "item"):
         data = train_batch[key]
         data["positions"].requires_grad_(True)
         data["node_attrs"].requires_grad_(True)

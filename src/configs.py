@@ -22,11 +22,11 @@ class ModelArgs:
 
 @dataclass
 class DataArgs:
-    lagtime: int = 100
+    protein_id: str
+    traj_id: int = 0
+    lagtime: int = 1
     batch_size: int = 64
-    cutoff: float = 8.0
     remove_isolated_nodes: bool = False
-    system_selection: str | None = None
 
 
 @dataclass
@@ -37,24 +37,6 @@ class Config:
 
 
 default_configs = {
-    "chignolin-dev": (
-        "Chignolin dev configs",
-        Config(
-            model_args=ModelArgs(
-                latent_dim=16,
-                linear_lora=4,
-                encoder_lr=1e-3,
-                linear_lr=1e-2,
-                min_encoder_lr=1e-5,
-                epochs=50,
-                max_grad_norm=None,
-                normalize_lin=False,
-                regularization=1e-5,
-                save_embeddings=True,
-            ),
-            data_args=DataArgs(lagtime=500, cutoff=6.0, system_selection="name CA"),
-        ),
-    ),
     "chignolin-prod": (
         "Chignolin production configs",
         Config(
@@ -71,10 +53,31 @@ default_configs = {
                 save_embeddings=False,
             ),
             data_args=DataArgs(
-                lagtime=50,
-                cutoff=7.0,
-                system_selection="all and not type H",
-                # system_selection="name CA",
+                protein_id="CLN025",
+                lagtime=1,
+                batch_size=128,
+            ),
+            num_devices=2,
+        ),
+    ),
+    "villin-prod": (
+        "Villin production configs",
+        Config(
+            model_args=ModelArgs(
+                latent_dim=64,
+                linear_lora=16,
+                encoder_lr=1e-2,
+                linear_lr=1e-2,
+                min_encoder_lr=1e-3,
+                epochs=100,
+                max_grad_norm=0.2,
+                normalize_lin=False,
+                regularization=1e-4,
+                save_embeddings=False,
+            ),
+            data_args=DataArgs(
+                protein_id="2F4K",
+                lagtime=1,
                 batch_size=128,
             ),
             num_devices=2,
