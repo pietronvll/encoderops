@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import List
 
 import lightning
@@ -6,11 +5,12 @@ import torch
 from linear_operator_learning.nn import SimNorm
 from loguru import logger
 from mlcolvar.core.nn.graph.schnet import SchNetModel
-from torch.optim import Adam, AdamW
+from torch.optim import Adam
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from src.configs import DataArgs, ModelArgs
 from src.loss import RegSpectralLoss
+from src.utils import effective_rank, lin_svdvals, normalize_linear_layer
 
 
 class EvolutionOperator(lightning.LightningModule):
@@ -59,19 +59,7 @@ class EvolutionOperator(lightning.LightningModule):
             bias=False,
         )
         self.linear = torch.nn.Sequential(linear_l, linear_r)
-
         self.loss = RegSpectralLoss(reg=model_args.regularization)
-        self.embeddings = {"t": [], "lag": []}
-
-    def effective_rank(self):
-        # Compute effective rank
-        T_1 = self.linear[1].weight
-        T_0 = self.linear[0].weight
-        T = T_1 @ T_0
-        # Compute the effective rank of T, which is the exponential of the entropy of the singular values
-        s = torch.linalg.svdvals(T)
-        s /= s.sum()
-        return torch.exp(-torch.sum(s * torch.log(s)))
 
     def forward_nn(self, x: torch.Tensor, lagged: bool = False) -> torch.Tensor:
         x = self.encoder(x)
@@ -86,9 +74,6 @@ class EvolutionOperator(lightning.LightningModule):
         # forward
         f_t = self.forward_nn(x_t)
         f_lag = self.forward_nn(x_lag, lagged=True)
-        if self.model_args.save_embeddings:
-            self.embeddings["t"].append((f_t.detach().cpu()))
-            self.embeddings["lag"].append((f_lag.detach().cpu()))
         # opt
         # opt:zero_grad
         for opt in self.optimizers():
@@ -107,8 +92,7 @@ class EvolutionOperator(lightning.LightningModule):
             opt.step()
         # opt:linear_norm
         if self.model_args.normalize_lin:
-            raise NotImplementedError()
-            # normalize_linear_layer(self.linear)
+            norm = normalize_linear_layer(self.linear)
         # opt:scheduler_step
         sch = self.lr_schedulers()
         if self.trainer.is_last_batch:
@@ -116,81 +100,69 @@ class EvolutionOperator(lightning.LightningModule):
 
         # log
         with torch.no_grad():
+            svals = lin_svdvals(self.linear).sort().values
             loss_noreg = self.loss.noreg(f_t, f_lag)
-            effective_rank = self.effective_rank()
+
         loss_dict = {
             "train_loss": -loss,
             "train_loss_noreg": -loss_noreg,
-            "effective_rank": effective_rank,
+            "effective_rank": effective_rank(svals),
+            "sigma_1": svals[-1].item(),
+            "sigma_2": svals[-2].item(),
+            "lin_norm": norm,
         }
+
         self.log_dict(
-            dict(loss_dict), on_step=True, on_epoch=True, sync_dist=True, prog_bar=True
+            dict(loss_dict),
+            on_step=False,
+            on_epoch=True,
+            sync_dist=False,
+            prog_bar=True,
+            batch_size=f_t.shape[0],
         )
+
         self.log(
             "learning_rate",
             sch.get_last_lr()[0],
             on_step=False,
             on_epoch=True,
             prog_bar=False,
+            batch_size=f_t.shape[0],
         )
         return loss
 
-    def on_train_epoch_end(self):
-        if self.current_epoch == 0:
-            logger.info(f"Checkpoints at {self.trainer.checkpoint_callback.dirpath}")
-        if not self.model_args.save_embeddings:
-            return
-
-        # to_save = {"linear": self.linear.weight.detach().cpu()}
-        to_save = {}
-        for k, v in self.embeddings.items():
-            to_save[k] = torch.cat(v)
-
-        dirpath = Path(self.trainer.checkpoint_callback.dirpath).parent
-        act_path = dirpath / f"embeddings/epoch={self.current_epoch}.pt"
-        act_path.parent.mkdir(parents=True, exist_ok=True)
-        # Save to disk
-        torch.save(
-            to_save,
-            act_path.__str__(),
-        )
-
-        # Clear for next epoch
-        self.embeddings = {"t": [], "lag": []}
+    def on_train_start(self):
+        logger.info(f"Checkpoints at {self.trainer.checkpoint_callback.dirpath}")
 
     def configure_optimizers(self):
         """
         Initialize the optimizer based on self._optimizer_name and self.optimizer_kwargs.
-
-        Returns
-        -------
-        torch.optim
-            Torch optimizer
         """
 
-        encoder_opt = AdamW(
+        encoder_opt = Adam(
             self.encoder.parameters(),
             lr=self.model_args.encoder_lr,
         )
         linear_opt = Adam(self.linear.parameters(), lr=self.model_args.linear_lr)
 
-        # Cosine annealing for half of the epochs and then constant.
-        decay_epochs = self.model_args.epochs // 2
-        scheduler = CosineAnnealingLR(
-            encoder_opt,
-            T_max=decay_epochs,  # Remaining 90% of epochs
-            eta_min=self.model_args.min_encoder_lr,  # Minimum learning rate
-        )
-
-        return (
+        configuration = (
             {
                 "optimizer": encoder_opt,
-                "lr_scheduler": {
-                    "scheduler": scheduler,
-                },
             },
-            {"optimizer": linear_opt},
+            {
+                "optimizer": linear_opt,
+            },
         )
+
+        if self.model_args.min_encoder_lr is not None:
+            scheduler = CosineAnnealingLR(
+                encoder_opt,
+                T_max=self.model_args.epochs,
+                eta_min=self.model_args.min_encoder_lr,  # Minimum learning rate
+            )
+            configuration[0]["lr_scheduler"] = scheduler
+
+        return configuration
 
     @staticmethod
     def _setup_graph_data(train_batch, key: str = "item"):

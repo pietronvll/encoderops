@@ -7,17 +7,16 @@ class ModelArgs:
     linear_lora: int
     encoder_lr: float
     linear_lr: float
-    min_encoder_lr: float
     epochs: int
     max_grad_norm: float | None
     normalize_lin: bool
     regularization: float
+    min_encoder_lr: float | None = None
     simnorm_dim: int = 4
     n_bases: int = 16
     n_layers: int = 3
     n_filters: int = 32
     n_hidden_channels: int = 64
-    save_embeddings: bool = False
 
 
 @dataclass
@@ -48,9 +47,8 @@ default_configs = {
                 min_encoder_lr=1e-3,
                 epochs=100,
                 max_grad_norm=0.2,
-                normalize_lin=False,
+                normalize_lin=True,
                 regularization=1e-4,
-                save_embeddings=False,
             ),
             data_args=DataArgs(
                 protein_id="CLN025",
@@ -73,7 +71,6 @@ default_configs = {
                 max_grad_norm=0.2,
                 normalize_lin=False,
                 regularization=1e-4,
-                save_embeddings=False,
             ),
             data_args=DataArgs(
                 protein_id="2F4K",
