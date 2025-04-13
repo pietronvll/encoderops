@@ -94,9 +94,18 @@ class EvolutionOperator(lightning.LightningModule):
         if self.model_args.normalize_lin:
             norm = normalize_linear_layer(self.linear)
         # opt:scheduler_step
-        sch = self.lr_schedulers()
-        if self.trainer.is_last_batch:
-            sch.step()
+        if self.model_args.min_encoder_lr is not None:
+            sch = self.lr_schedulers()
+            if self.trainer.is_last_batch:
+                sch.step()
+            self.log(
+                "learning_rate",
+                sch.get_last_lr()[0],
+                on_step=False,
+                on_epoch=True,
+                prog_bar=False,
+                batch_size=f_t.shape[0],
+            )
 
         # log
         with torch.no_grad():
@@ -118,15 +127,6 @@ class EvolutionOperator(lightning.LightningModule):
             on_epoch=True,
             sync_dist=False,
             prog_bar=True,
-            batch_size=f_t.shape[0],
-        )
-
-        self.log(
-            "learning_rate",
-            sch.get_last_lr()[0],
-            on_step=False,
-            on_epoch=True,
-            prog_bar=False,
             batch_size=f_t.shape[0],
         )
         return loss
