@@ -93,6 +93,7 @@ class EvolutionOperator(lightning.LightningModule):
         # opt:linear_norm
         if self.model_args.normalize_lin:
             norm = normalize_linear_layer(self.linear)
+
         # opt:scheduler_step
         if self.model_args.min_encoder_lr is not None:
             sch = self.lr_schedulers()
@@ -111,6 +112,8 @@ class EvolutionOperator(lightning.LightningModule):
         with torch.no_grad():
             svals = lin_svdvals(self.linear).sort().values
             loss_noreg = self.loss.noreg(f_t, f_lag)
+        if not self.model_args.normalize_lin:
+            norm = svals[-1].item()
 
         loss_dict = {
             "train_loss": -loss,
