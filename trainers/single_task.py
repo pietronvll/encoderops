@@ -22,6 +22,7 @@ def main(config: Config):
     logger.info(
         f"Loaded dataset {dataset.protein_id}-{dataset.traj_id} | cutoff {dataset.cutoff} Ang | lagtime {dataset.lagtime_ns} ns"
     )
+
     train_dataloader = DataLoader(
         dataset, batch_size=config.data_args.batch_size, shuffle=True, num_workers=8
     )
@@ -38,7 +39,7 @@ def main(config: Config):
     checkpoint_callback = ModelCheckpoint(every_n_epochs=5, save_top_k=-1)
     # Trainer
     trainer = Trainer(
-        logger=WandbLogger(project="encoderops_chignolin", entity="csml"),
+        logger=WandbLogger(project=f"encoderops-{config.data_args.protein_id}-{config.data_args.traj_id}", entity="csml"),
         callbacks=[checkpoint_callback],
         accelerator="cuda",
         devices=config.num_devices,
