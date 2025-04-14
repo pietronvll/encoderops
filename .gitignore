@@ -12,4 +12,4 @@ preprocessed_data
 lmdb
 encoderops_chignolin
 wandb
-.code-workspace
+*.code-workspace
