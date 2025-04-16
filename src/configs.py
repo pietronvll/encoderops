@@ -75,9 +75,9 @@ default_configs = {
             data_args=DataArgs(
                 protein_id="2F4K",
                 lagtime=1,
-                batch_size=128,
+                batch_size=64,
             ),
-            num_devices=2,
+            num_devices=1,
         ),
     ),
 }

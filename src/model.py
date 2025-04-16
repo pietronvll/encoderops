@@ -1,5 +1,5 @@
 from typing import List
-
+from dataclasses import asdict
 import lightning
 import torch
 from linear_operator_learning.nn import SimNorm
@@ -136,6 +136,10 @@ class EvolutionOperator(lightning.LightningModule):
 
     def on_train_start(self):
         logger.info(f"Checkpoints at {self.trainer.checkpoint_callback.dirpath}")
+        for k, v in asdict(self.model_args).items():
+            if k not in self.logger.experiment.config.keys():
+                self.logger.experiment.config[k] = v
+
 
     def configure_optimizers(self):
         """
