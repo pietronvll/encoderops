@@ -2,8 +2,10 @@ from dataclasses import asdict
 from typing import List
 
 import lightning
+import numpy as np
 import torch
 from linear_operator_learning.nn import SimNorm
+from linear_operator_learning.nn.stats import covariance
 from loguru import logger
 from mlcolvar.core.nn.graph.schnet import SchNetModel
 from torch.nn.utils.parametrizations import spectral_norm
@@ -50,6 +52,10 @@ class EvolutionOperator(lightning.LightningModule):
         else:
             self.encoder = torch.nn.Sequential(encoder, batch_norm)
 
+        # Register buffers for covariance and cross-covariance matrices
+        self.register_buffer("cov", torch.eye(model_args.latent_dim))
+        self.register_buffer("cross_cov", torch.eye(model_args.latent_dim))
+
         self.linear = torch.nn.Linear(
             model_args.latent_dim, model_args.latent_dim, bias=False
         )
@@ -63,6 +69,29 @@ class EvolutionOperator(lightning.LightningModule):
         if lagged:
             x = self.linear(x)
         return x
+
+    @torch.no_grad()
+    def get_timescales(self):
+        """
+        Create a Wandb scatter plot of the eigenvalues of the transfer operator as currently estimated by self.cov and self.cross_cov
+        """
+        transfer_operator = self.get_transfer_operator()
+        operator_eigs = torch.linalg.eigvals(transfer_operator).numpy(force=True)
+        lagtime_ns = self.trainer.train_dataloader.dataset.lagtime_ns
+        timescales = np.sort((1 / -np.log(np.abs(operator_eigs))) * lagtime_ns)[::-1]
+        return timescales
+
+    @torch.no_grad()
+    def get_transfer_operator(self, reg: float = 1e-4):
+        reg_cov = (
+            reg
+            * torch.eye(
+                self.model_args.latent_dim, dtype=self.cov.dtype, device=self.cov.device
+            )
+            + self.cov
+        )
+        transfer_operator = torch.linalg.solve(reg_cov, self.cross_cov)
+        return transfer_operator
 
     def training_step(self, train_batch, batch_idx):
         # data
@@ -101,13 +130,31 @@ class EvolutionOperator(lightning.LightningModule):
                 prog_bar=False,
                 batch_size=f_t.shape[0],
             )
+        # update covariances with EMA
+
+        with torch.no_grad():
+            cov_new = covariance(f_t, center=False)
+            cross_cov_new = covariance(f_t, f_lag, center=False)
+            # Gather values from all processes
+            if self.trainer.world_size > 1:
+                # Use all_reduce with AVG operation to average across all devices
+                torch.distributed.all_reduce(cov_new, op=torch.distributed.ReduceOp.SUM)
+                torch.distributed.all_reduce(
+                    cross_cov_new, op=torch.distributed.ReduceOp.SUM
+                )
+
+                # Normalize by world_size since we summed across devices
+                cov_new = cov_new / self.trainer.world_size
+                cross_cov_new = cross_cov_new / self.trainer.world_size
+            alpha = 0.99
+            self.cov = alpha * self.cov + (1 - alpha) * cov_new
+            self.cross_cov = alpha * self.cross_cov + (1 - alpha) * cross_cov_new
 
         # log
         with torch.no_grad():
             svals = lin_svdvals(self.linear).sort().values
+            timescales = self.get_timescales()
             loss_noreg = self.loss.noreg(f_t, f_lag)
-        if not self.model_args.normalize_lin:
-            norm = svals[-1].item()
 
         loss_dict = {
             "train_loss": -loss,
@@ -115,7 +162,9 @@ class EvolutionOperator(lightning.LightningModule):
             "effective_rank": effective_rank(svals),
             "sigma_1": svals[-1].item(),
             "sigma_2": svals[-2].item(),
-            "lin_norm": norm,
+            "timescale_1 (ns)": timescales[0],
+            "timescale_2 (ns)": timescales[1],
+            "timescale_3 (ns)": timescales[2],
         }
 
         self.log_dict(
@@ -129,10 +178,11 @@ class EvolutionOperator(lightning.LightningModule):
         return loss
 
     def on_train_start(self):
-        logger.info(f"Checkpoints at {self.trainer.checkpoint_callback.dirpath}")
-        for k, v in asdict(self.model_args).items():
-            if k not in self.logger.experiment.config.keys():
-                self.logger.experiment.config[k] = v
+        if self.global_rank == 0:
+            logger.info(f"Checkpoints at {self.trainer.checkpoint_callback.dirpath}")
+            for k, v in asdict(self.model_args).items():
+                if k not in self.logger.experiment.config.keys():
+                    self.logger.experiment.config[k] = v
 
     def configure_optimizers(self):
         """

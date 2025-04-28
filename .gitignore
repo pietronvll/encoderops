@@ -9,8 +9,8 @@ wheels/
 # Virtual environments
 .venv
 .env
-preprocessed_data
 lmdb
 encoderops_chignolin
 wandb
 *.code-workspace
+logs

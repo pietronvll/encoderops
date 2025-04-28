@@ -1,5 +1,6 @@
 # uv run --env-file=.env -- python -m  trainers.chignolin [ARGS]
 
+
 import tyro
 from lightning import Trainer
 from lightning.pytorch.callbacks import ModelCheckpoint
@@ -35,11 +36,15 @@ def main(config: Config):
         data_args=config.data_args,
     )
 
-    # saves top-K checkpoints based on "val_loss" metric
+    wandb_logger = WandbLogger(
+        project=f"encoderops-{config.data_args.protein_id}-{config.data_args.traj_id}",
+        entity="csml",
+        save_dir="./logs",
+    )
     checkpoint_callback = ModelCheckpoint(every_n_epochs=5, save_top_k=-1)
     # Trainer
     trainer = Trainer(
-        logger=WandbLogger(project=f"encoderops-{config.data_args.protein_id}-{config.data_args.traj_id}", entity="csml"),
+        logger=wandb_logger,
         callbacks=[checkpoint_callback],
         accelerator="cuda",
         devices=config.num_devices,

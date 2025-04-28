@@ -56,6 +56,27 @@ default_configs = {
             num_devices=2,
         ),
     ),
+    "chignolin-dev": (
+        "Chignolin dev configs",
+        Config(
+            model_args=ModelArgs(
+                latent_dim=64,
+                encoder_lr=1e-2,
+                linear_lr=1e-2,
+                min_encoder_lr=1e-2,
+                epochs=10,
+                max_grad_norm=0.2,
+                normalize_lin=True,
+                regularization=1e-5,
+            ),
+            data_args=DataArgs(
+                protein_id="CLN025",
+                lagtime=1,
+                batch_size=128,
+            ),
+            num_devices=2,
+        ),
+    ),
     "villin-prod": (
         "Villin production configs",
         Config(
