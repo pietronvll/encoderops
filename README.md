@@ -5,9 +5,8 @@
 ## Notes
 ### Installation
 ```bash
-uv pip install torch setuptools
-uv pip install torch-scatter --no-build-isolation
-uv sync
+uv sync --no-install-package torch-scatter
+uv sync --no-build-isolation
 ```
 
 ## Dataset preprocessing
