@@ -1,16 +1,18 @@
-from typing import List
 from dataclasses import asdict
+from typing import List
+
 import lightning
 import torch
 from linear_operator_learning.nn import SimNorm
 from loguru import logger
 from mlcolvar.core.nn.graph.schnet import SchNetModel
+from torch.nn.utils.parametrizations import spectral_norm
 from torch.optim import Adam
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from src.configs import DataArgs, ModelArgs
 from src.loss import RegSpectralLoss
-from src.utils import effective_rank, lin_svdvals, normalize_linear_layer
+from src.utils import effective_rank, lin_svdvals
 
 
 class EvolutionOperator(lightning.LightningModule):
@@ -48,17 +50,12 @@ class EvolutionOperator(lightning.LightningModule):
         else:
             self.encoder = torch.nn.Sequential(encoder, batch_norm)
 
-        linear_l = torch.nn.Linear(
-            model_args.latent_dim,
-            model_args.linear_lora,
-            bias=False,
+        self.linear = torch.nn.Linear(
+            model_args.latent_dim, model_args.latent_dim, bias=False
         )
-        linear_r = torch.nn.Linear(
-            model_args.linear_lora,
-            model_args.latent_dim,
-            bias=False,
-        )
-        self.linear = torch.nn.Sequential(linear_l, linear_r)
+        if self.model_args.normalize_lin:
+            self.linear = spectral_norm(self.linear)
+
         self.loss = RegSpectralLoss(reg=model_args.regularization)
 
     def forward_nn(self, x: torch.Tensor, lagged: bool = False) -> torch.Tensor:
@@ -90,9 +87,6 @@ class EvolutionOperator(lightning.LightningModule):
         # opt:step
         for opt in self.optimizers():
             opt.step()
-        # opt:linear_norm
-        if self.model_args.normalize_lin:
-            norm = normalize_linear_layer(self.linear)
 
         # opt:scheduler_step
         if self.model_args.min_encoder_lr is not None:
@@ -139,7 +133,6 @@ class EvolutionOperator(lightning.LightningModule):
         for k, v in asdict(self.model_args).items():
             if k not in self.logger.experiment.config.keys():
                 self.logger.experiment.config[k] = v
-
 
     def configure_optimizers(self):
         """

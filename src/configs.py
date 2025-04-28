@@ -4,7 +4,6 @@ from dataclasses import dataclass
 @dataclass
 class ModelArgs:
     latent_dim: int
-    linear_lora: int
     encoder_lr: float
     linear_lr: float
     epochs: int
@@ -41,7 +40,6 @@ default_configs = {
         Config(
             model_args=ModelArgs(
                 latent_dim=64,
-                linear_lora=16,
                 encoder_lr=1e-2,
                 linear_lr=1e-2,
                 min_encoder_lr=1e-4,
@@ -63,7 +61,6 @@ default_configs = {
         Config(
             model_args=ModelArgs(
                 latent_dim=64,
-                linear_lora=16,
                 encoder_lr=1e-2,
                 linear_lr=1e-2,
                 min_encoder_lr=1e-4,
