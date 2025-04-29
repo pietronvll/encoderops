@@ -6,7 +6,6 @@ from pathlib import Path
 import torch
 import tyro
 from loguru import logger
-from mlcolvar.data.graph.utils import _create_dataset_from_configuration
 from tqdm import tqdm
 
 import lmdb
@@ -16,8 +15,6 @@ from src.data import mdtraj_load, traj_to_confs
 def main(
     protein_id: str,
     traj_id: int = 0,
-    cutoff: float = 7.0,
-    stride: int = 25,
     system_selection: str = "all and not type H",
 ):
     data_path = Path(os.environ["DATA_PATH"])
@@ -28,51 +25,40 @@ def main(
     trajectory_files = [str(traj) for traj in protein_path.glob("*.dcd")]
     top = next(protein_path.glob("*.pdb")).__str__()
     name = next(protein_path.glob("*.pdb")).stem
-    traj = mdtraj_load(trajectory_files, top, stride)
+    traj = mdtraj_load(trajectory_files, top, 1)
     configs, z_table, atom_names = traj_to_confs(
         traj, system_selection=system_selection
     )
     metadata = {
-        "cutoff": cutoff,
         "system_selection": system_selection,
-        "lagtime_ns": stride * 0.2,
+        "lagtime_ns": 0.2,
     }
     database_path = Path(__file__).parent.parent / "lmdb"
     # database_path = protein_path.parent / "lmdb"
     logger.info(database_path.__str__())
     if not database_path.exists():
         database_path.mkdir(parents=True)
-    metadata_path = database_path / f"metadata-{name}.json"
+    metadata_path = database_path / f"metadata-{name}-dev.json"
     json.dump(metadata, open(metadata_path, "w"))
-    lmdb_path = database_path / f"{name}.lmdb"
+    lmdb_path = database_path / f"{name}-dev.lmdb"
     map_size = 10_995_116_277_760  # 1 TB
     env = lmdb.open(lmdb_path.__str__(), map_size=map_size, subdir=False)
-    store_to_lmdb(env, configs, z_table, cutoff)
+    store_to_lmdb(env, configs, z_table)
 
 
 @torch.no_grad()
-def store_to_lmdb(env, configs, z_table, cutoff):
+def store_to_lmdb(env, configs, z_table):
     with env.begin(write=True) as txn:
         length = len(configs)
         txn.put(b"__len__", pickle.dumps(length))
         txn.put(b"z_table", pickle.dumps(z_table))
 
     for idx, c in tqdm(list(enumerate(configs))):
-        value = _create_dataset_from_configuration(
-            config=c,
-            z_table=z_table,
-            cutoff=cutoff,
-            buffer=0.0,
-        )
-
         with env.begin(write=True) as txn:
             item_key = f"item_{idx}".encode()
-            pickled_value = pickle.dumps(value)
+            pickled_value = pickle.dumps(c)
             txn.put(item_key, pickled_value)
             del pickled_value  # Explicitly delete the pickled data
-
-        del value  # Delete the data object
-
 
 if __name__ == "__main__":
     tyro.cli(main)

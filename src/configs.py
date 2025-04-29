@@ -72,9 +72,9 @@ default_configs = {
             data_args=DataArgs(
                 protein_id="CLN025",
                 lagtime=1,
-                batch_size=512,
+                batch_size=128,
             ),
-            num_devices=1,
+            num_devices=2,
         ),
     ),
     "villin-prod": (
