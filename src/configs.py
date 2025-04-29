@@ -32,6 +32,7 @@ class Config:
     model_args: ModelArgs
     data_args: DataArgs
     num_devices: int = 1
+    dataloader_workers: int = 8
 
 
 default_configs = {
@@ -53,7 +54,6 @@ default_configs = {
                 lagtime=1,
                 batch_size=512,
             ),
-            num_devices=1,
         ),
     ),
     "chignolin-dev": (
@@ -74,7 +74,6 @@ default_configs = {
                 lagtime=1,
                 batch_size=128,
             ),
-            num_devices=2,
         ),
     ),
     "villin-prod": (

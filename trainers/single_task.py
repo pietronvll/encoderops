@@ -25,7 +25,7 @@ def main(config: Config):
     )
 
     train_dataloader = DataLoader(
-        dataset, batch_size=config.data_args.batch_size, shuffle=True, num_workers=8
+        dataset, batch_size=config.data_args.batch_size, shuffle=True, num_workers=config.dataloader_workers
     )
 
     # Model Init
