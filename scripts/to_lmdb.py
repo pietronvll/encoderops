@@ -38,9 +38,9 @@ def main(
     logger.info(database_path.__str__())
     if not database_path.exists():
         database_path.mkdir(parents=True)
-    metadata_path = database_path / f"metadata-{name}-dev.json"
+    metadata_path = database_path / f"metadata-{name}.json"
     json.dump(metadata, open(metadata_path, "w"))
-    lmdb_path = database_path / f"{name}-dev.lmdb"
+    lmdb_path = database_path / f"{name}.lmdb"
     map_size = 10_995_116_277_760  # 1 TB
     env = lmdb.open(lmdb_path.__str__(), map_size=map_size, subdir=False)
     store_to_lmdb(env, configs, z_table)
@@ -59,6 +59,7 @@ def store_to_lmdb(env, configs, z_table):
             pickled_value = pickle.dumps(c)
             txn.put(item_key, pickled_value)
             del pickled_value  # Explicitly delete the pickled data
+
 
 if __name__ == "__main__":
     tyro.cli(main)
