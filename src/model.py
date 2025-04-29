@@ -134,7 +134,8 @@ class EvolutionOperator(lightning.LightningModule):
 
         with torch.no_grad():
             cov_new = covariance(f_t, center=False)
-            cross_cov_new = covariance(f_t, f_lag, center=False)
+            f_lag_nolin = self.forward_nn(x_lag, lagged=False)
+            cross_cov_new = covariance(f_t, f_lag_nolin, center=False)
             # Gather values from all processes
             if self.trainer.world_size > 1:
                 # Use all_reduce with AVG operation to average across all devices
