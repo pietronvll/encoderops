@@ -51,9 +51,9 @@ default_configs = {
             data_args=DataArgs(
                 protein_id="CLN025",
                 lagtime=1,
-                batch_size=128,
+                batch_size=512,
             ),
-            num_devices=2,
+            num_devices=1,
         ),
     ),
     "chignolin-dev": (
@@ -72,9 +72,9 @@ default_configs = {
             data_args=DataArgs(
                 protein_id="CLN025",
                 lagtime=1,
-                batch_size=128,
+                batch_size=512,
             ),
-            num_devices=2,
+            num_devices=1,
         ),
     ),
     "villin-prod": (
