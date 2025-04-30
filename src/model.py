@@ -125,8 +125,8 @@ class EvolutionOperator(lightning.LightningModule):
             self.log(
                 "learning_rate",
                 sch.get_last_lr()[0],
-                on_step=False,
-                on_epoch=True,
+                on_step=True,
+                on_epoch=False,
                 prog_bar=False,
                 batch_size=f_t.shape[0],
             )
@@ -170,8 +170,8 @@ class EvolutionOperator(lightning.LightningModule):
 
         self.log_dict(
             dict(loss_dict),
-            on_step=False,
-            on_epoch=True,
+            on_step=True,
+            on_epoch=False,
             sync_dist=False,
             prog_bar=True,
             batch_size=f_t.shape[0],

@@ -50,7 +50,6 @@ def main(config: Config):
         devices=config.num_devices,
         max_epochs=config.model_args.epochs,
         enable_model_summary=True,
-        log_every_n_steps=5,
     )
 
     trainer.fit(model, train_dataloaders=train_dataloader)
