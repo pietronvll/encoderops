@@ -53,6 +53,7 @@ class EvolutionOperator(lightning.LightningModule):
             self.encoder = torch.nn.Sequential(encoder, batch_norm)
 
         # Register buffers for covariance and cross-covariance matrices
+        self.register_buffer("f_mean", torch.ones(model_args.latent_dim))
         self.register_buffer("cov", torch.eye(model_args.latent_dim))
         self.register_buffer("cross_cov", torch.eye(model_args.latent_dim))
 
@@ -133,9 +134,23 @@ class EvolutionOperator(lightning.LightningModule):
         # update covariances with EMA
 
         with torch.no_grad():
-            cov_new = covariance(f_t, center=False)
+            alpha = 0.99
+            # Updating the mean
+            mean_new = f_t.mean(dim=0)
+            if self.trainer.world_size > 1:
+                torch.distributed.all_reduce(
+                    mean_new, op=torch.distributed.ReduceOp.SUM
+                )
+                mean_new = mean_new / self.trainer.world_size
+            self.f_mean = alpha * self.f_mean + (1 - alpha) * mean_new
+            # Updating the covariance
+            cov_new = covariance(f_t - self.f_mean.view(1, -1), center=False)
             f_lag_nolin = self.forward_nn(x_lag, lagged=False)
-            cross_cov_new = covariance(f_t, f_lag_nolin, center=False)
+            cross_cov_new = covariance(
+                f_t - self.f_mean.view(1, -1),
+                f_lag_nolin - self.f_mean.view(1, -1),
+                center=False,
+            )
             # Gather values from all processes
             if self.trainer.world_size > 1:
                 # Use all_reduce with AVG operation to average across all devices
@@ -143,11 +158,9 @@ class EvolutionOperator(lightning.LightningModule):
                 torch.distributed.all_reduce(
                     cross_cov_new, op=torch.distributed.ReduceOp.SUM
                 )
-
                 # Normalize by world_size since we summed across devices
                 cov_new = cov_new / self.trainer.world_size
                 cross_cov_new = cross_cov_new / self.trainer.world_size
-            alpha = 0.99
             self.cov = alpha * self.cov + (1 - alpha) * cov_new
             self.cross_cov = alpha * self.cross_cov + (1 - alpha) * cross_cov_new
 
@@ -158,6 +171,7 @@ class EvolutionOperator(lightning.LightningModule):
             loss_noreg = self.loss.noreg(f_t, f_lag)
 
         loss_dict = {
+            "samples": self.global_step * f_t.shape[0],
             "train_loss": -loss,
             "train_loss_noreg": -loss_noreg,
             "effective_rank": effective_rank(svals),

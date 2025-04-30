@@ -25,7 +25,10 @@ def main(config: Config):
     )
 
     train_dataloader = DataLoader(
-        dataset, batch_size=config.data_args.batch_size, shuffle=True, num_workers=config.dataloader_workers
+        dataset,
+        batch_size=config.data_args.batch_size,
+        shuffle=True,
+        num_workers=config.dataloader_workers,
     )
 
     # Model Init
@@ -41,7 +44,9 @@ def main(config: Config):
         entity="csml",
         save_dir="./logs",
     )
-    checkpoint_callback = ModelCheckpoint(every_n_epochs=5, save_top_k=-1)
+    checkpoint_callback = ModelCheckpoint(
+        every_n_epochs=1, save_top_k=-1, save_last=True
+    )
     # Trainer
     trainer = Trainer(
         logger=wandb_logger,
