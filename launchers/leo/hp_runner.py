@@ -12,7 +12,8 @@ from pathlib import Path
 hyperparams = {
     'max_grad_norm': ['0.2', 'none'],
     'normalize_lin': ['true', 'false'],
-    'min_encoder_lr': ['none', '0.0001']
+    'min_encoder_lr': ['none', '0.0001'],
+    'simnorm_dim': [0, 2, 4]
 }
 
 # Generate all combinations of hyperparameters
@@ -46,6 +47,8 @@ for job_idx, combo in enumerate(combinations, 1):
         cmd_args.append('--model_args.min-encoder-lr=None')
     else:
         cmd_args.append(f'--model_args.min-encoder-lr={current_params["min_encoder_lr"]}')
+
+    cmd_args.append(f"--model_args.simnorm_dim={current_params['simnorm_dim']}")
     
     # Print job information
     param_str = ", ".join([f"{k}={v}" for k, v in current_params.items()])

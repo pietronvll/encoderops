@@ -8,7 +8,7 @@
 #SBATCH --cpus-per-task=8
 ############################
 
-export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK}
+export OMP_NUM_THREADS=1
 
 echo "Executing: uv run train.py $@"
 uv run --env-file=.env -- python -m trainers.single_task $@ --num_devices=1 --data_args.batch_size=1024  
