@@ -171,7 +171,7 @@ class EvolutionOperator(lightning.LightningModule):
             loss_noreg = self.loss.noreg(f_t, f_lag)
 
         loss_dict = {
-            "samples": self.global_step * f_t.shape[0],
+            "samples": self.global_step * f_t.shape[0] * self.trainer.world_size,
             "train_loss": -loss,
             "train_loss_noreg": -loss_noreg,
             "effective_rank": effective_rank(svals),
