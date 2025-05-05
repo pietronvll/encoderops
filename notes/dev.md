@@ -1,6 +1,7 @@
 # todo
 #### May 5, 2025
 - [ ] ⚠️ ⚠️ ⚠️ System selection in `to_lmdb` is NOT doing what I supposed it did. Need to fix it.
+- [ ] MLColvar's state interpreter is using a feature ('ovr' multiclass) which is going to be deprecated in sklearn 1.7, open a PR.
 #### Apr 29, 2025
 - [x] Write a HP search script to be runned on leonardo
 
