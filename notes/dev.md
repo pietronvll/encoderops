@@ -1,7 +1,8 @@
 # todo
-
+#### May 5, 2025
+- [ ] ⚠️ ⚠️ ⚠️ System selection in `to_lmdb` is NOT doing what I supposed it did. Need to fix it.
 #### Apr 29, 2025
-- [ ] Write a HP search script to be runned on leonardo
+- [x] Write a HP search script to be runned on leonardo
 
 #### Apr 28, 2025
 - [x] Save the covariances as buffers and update them via EMAs
