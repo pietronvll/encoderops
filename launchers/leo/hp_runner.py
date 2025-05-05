@@ -13,7 +13,7 @@ hyperparams = {
     'max_grad_norm': ['0.2', 'none'],
     'normalize_lin': ['true', 'false'],
     'min_encoder_lr': ['none', '0.0001'],
-    'simnorm_dim': [0, 2, 4]
+    'simnorm_dim': [0]
 }
 
 # Generate all combinations of hyperparameters
