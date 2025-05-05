@@ -15,7 +15,7 @@ from src.data import mdtraj_load, traj_to_confs
 def main(
     protein_id: str,
     traj_id: int = 0,
-    system_selection: str = "all and not type H",
+    system_selection: str | None = "all and not type H",
 ):
     data_path = Path(os.environ["DATA_PATH"])
     protein_path = (
@@ -26,9 +26,11 @@ def main(
     top = next(protein_path.glob("*.pdb")).__str__()
     name = next(protein_path.glob("*.pdb")).stem
     traj = mdtraj_load(trajectory_files, top, 1)
-    configs, z_table, atom_names = traj_to_confs(
-        traj, system_selection=system_selection
-    )
+    system_atoms = traj.top.select(system_selection)
+    if system_selection is not None:
+        logger.info(f"System selection: {system_selection}")
+        traj = traj.atom_slice(system_atoms)
+    configs, z_table, _ = traj_to_confs(traj)
     metadata = {
         "system_selection": system_selection,
         "lagtime_ns": 0.2,
