@@ -34,17 +34,18 @@ def main(config: MultiTaskConfig):
         logger.info(
             f"\n  - {ds.protein_id}-{ds.traj_id} | cutoff {ds.cutoff} Ang | lagtime {ds.lagtime_ns} ns"
         )
-    logger.info(f"Using batch size {config.data_args[0].batch_size}")
+    logger.info(f"Using batch size {config.batch_size}")
     train_dataloader = DataLoader(
         dataset,
-        batch_size=config.data_args[0].batch_size,
+        batch_size=config.batch_size,
         shuffle=True,
         num_workers=config.dataloader_workers,
     )
 
     # Model Init
+    cutoff = max([ds.cutoff for ds in datasets])
     model = MultiTaskOperator(
-        cutoff=dataset.cutoff,
+        cutoff=cutoff,
         atomic_numbers=atomic_numbers,
         model_args=config.model_args,
         data_args=config.data_args,

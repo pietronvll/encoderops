@@ -39,6 +39,7 @@ class Config:
 class MultiTaskConfig:
     model_args: ModelArgs
     data_args: list[DataArgs]
+    batch_size: int
     num_devices: int = 1
     dataloader_workers: int = 8
 
@@ -81,6 +82,29 @@ default_configs = {
                 batch_size=64,
             ),
             num_devices=1,
+        ),
+    ),
+    "multitask": (
+        "MultiTask - Chignolin Trp-cage Villin",
+        MultiTaskConfig(
+            model_args=ModelArgs(
+                latent_dim=64,
+                encoder_lr=1e-2,
+                linear_lr=1e-2,
+                min_encoder_lr=1e-4,
+                epochs=5,
+                max_grad_norm=0.2,
+                normalize_lin=False,
+                regularization=1e-5,
+            ),
+            data_args=[
+                DataArgs(protein_id="CLN025"),
+                DataArgs(protein_id="2JOF"),
+                DataArgs(protein_id="2F4K"),
+            ],
+            batch_size=32,
+            num_devices=2,
+            dataloader_workers=10,
         ),
     ),
 }

@@ -28,6 +28,7 @@ class EvolutionOperator(lightning.LightningModule):
     ):
         super().__init__()
         self.save_hyperparameters()
+        self.automatic_optimization = False
 
         self.model_args = model_args
         self.data_args = data_args
@@ -248,6 +249,7 @@ class MultiTaskOperator(lightning.LightningModule):
         super().__init__()
         self.save_hyperparameters()
 
+        self.automatic_optimization = False
         self.model_args = model_args
         self.data_args = data_args
         self.num_systems = len(data_args)
@@ -311,7 +313,7 @@ class MultiTaskOperator(lightning.LightningModule):
     ) -> torch.Tensor:
         x = self.encoder(x)
         if lagged:
-            x = self.linear[system_id](x)
+            x = self.linear[f"linear_{system_id}"](x)
         return x
 
     def get_buffers(self, system_id: int):
@@ -399,6 +401,8 @@ class MultiTaskOperator(lightning.LightningModule):
         for system_id, batch in system_batches.items():
             x_t = self._setup_graph_data(batch)
             x_lag = self._setup_graph_data(batch, key="item_lag")
+            if x_t.num_graphs == 1:
+                continue  # Otherwise batch_norm will fail
             # forward
             f_t_system = self.forward_nn(x_t, system_id)
             f_lag_system = self.forward_nn(x_lag, system_id, lagged=True)
@@ -410,7 +414,7 @@ class MultiTaskOperator(lightning.LightningModule):
             with torch.no_grad():
                 timescales = self.get_timescales(system_id)
                 cov, _, _ = self.get_buffers(system_id)
-                eff_rank = effective_rank(torch.linalg.eigh(cov))
+                eff_rank = effective_rank(torch.linalg.eigvalsh(cov))
                 log_dict[f"{self.system_names[system_id]} rank"] = eff_rank
                 log_dict[f"{self.system_names[system_id]} tau_1"] = timescales[0]
                 log_dict[f"{self.system_names[system_id]} tau_2"] = timescales[1]
