@@ -1,3 +1,4 @@
+import bisect
 import json
 import os
 import pickle
@@ -10,7 +11,7 @@ from mlcolvar.utils.io import (
     _names_from_top,
     _z_table_from_top,
 )
-from torch.utils.data import Dataset
+from torch.utils.data import ConcatDataset, Dataset
 
 import lmdb
 
@@ -121,3 +122,22 @@ class DESRESDataset(Dataset):
             "item_lag": data[1],
         }
         return result_dict
+
+
+class ConcatDESRES(ConcatDataset):
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+
+    def __getitem__(self, idx):
+        if idx < 0:
+            if -idx > len(self):
+                raise ValueError(
+                    "absolute value of index should not exceed dataset length"
+                )
+            idx = len(self) + idx
+        dataset_idx = bisect.bisect_right(self.cumulative_sizes, idx)
+        if dataset_idx == 0:
+            sample_idx = idx
+        else:
+            sample_idx = idx - self.cumulative_sizes[dataset_idx - 1]
+        return self.datasets[dataset_idx][sample_idx], dataset_idx

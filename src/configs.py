@@ -35,6 +35,14 @@ class Config:
     dataloader_workers: int = 8
 
 
+@dataclass
+class MultiTaskConfig:
+    model_args: ModelArgs
+    data_args: list[DataArgs]
+    num_devices: int = 1
+    dataloader_workers: int = 8
+
+
 default_configs = {
     "chignolin-prod": (
         "Chignolin production configs",
