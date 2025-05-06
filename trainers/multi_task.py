@@ -34,10 +34,10 @@ def main(config: MultiTaskConfig):
         logger.info(
             f"\n  - {ds.protein_id}-{ds.traj_id} | cutoff {ds.cutoff} Ang | lagtime {ds.lagtime_ns} ns"
         )
-
+    logger.info(f"Using batch size {config.data_args[0].batch_size}")
     train_dataloader = DataLoader(
         dataset,
-        batch_size=config.data_args.batch_size,
+        batch_size=config.data_args[0].batch_size,
         shuffle=True,
         num_workers=config.dataloader_workers,
     )
@@ -50,8 +50,13 @@ def main(config: MultiTaskConfig):
         data_args=config.data_args,
     )
 
+    project_name = "encoderops-"
+    for data_args in config.data_args:
+        project_name += f"{data_args.protein_id}_{data_args.traj_id}-"
+    project_name = project_name[:-1]
+
     wandb_logger = WandbLogger(
-        project=f"encoderops-{config.data_args.protein_id}-{config.data_args.traj_id}",
+        project=project_name,
         entity="csml",
         save_dir="./logs",
     )

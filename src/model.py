@@ -251,6 +251,7 @@ class MultiTaskOperator(lightning.LightningModule):
         self.model_args = model_args
         self.data_args = data_args
         self.num_systems = len(data_args)
+        self.system_names = [data_args[i].protein_id for i in range(self.num_systems)]
 
         encoder = SchNetModel(
             n_out=model_args.latent_dim,
@@ -410,9 +411,9 @@ class MultiTaskOperator(lightning.LightningModule):
                 timescales = self.get_timescales(system_id)
                 cov, _, _ = self.get_buffers(system_id)
                 eff_rank = effective_rank(torch.linalg.eigh(cov))
-                log_dict[f"rank_{system_id}"] = eff_rank
-                log_dict[f"({system_id}) tau_1"] = timescales[0]
-                log_dict[f"({system_id}) tau_2"] = timescales[1]
+                log_dict[f"{self.system_names[system_id]} rank"] = eff_rank
+                log_dict[f"{self.system_names[system_id]} tau_1"] = timescales[0]
+                log_dict[f"{self.system_names[system_id]} tau_2"] = timescales[1]
 
         f_t, f_lag = torch.cat(f_t), torch.cat(f_lag)
         # opt
