@@ -5,6 +5,7 @@ import pickle
 from pathlib import Path
 
 import mdtraj
+from loguru import logger
 from mlcolvar.data.graph.utils import _create_dataset_from_configuration
 from mlcolvar.utils.io import (
     _configures_from_trajectory,
@@ -27,6 +28,83 @@ def mdtraj_load(trajectory_files: list[str], top: str, stride: int = 1000):
     traj = mdtraj.load(trajectory_files, top=top, stride=stride)
     traj.top = mdtraj.core.trajectory.load_topology(top)
     return traj
+
+
+class CalixareneDataset(Dataset):
+    def __init__(
+        self,
+        guest_id: int,
+        traj_id: int = 0,
+        lagtime: int = 1,
+        cutoff: float = 7.0,
+        system_selection: str | None = "all and not type H",
+    ):
+        super().__init__()
+        traj_path = (
+            Path(os.environ["CALIX_PATH"]) / f"G{guest_id}/traj/traj_com_{traj_id}.trr"
+        )
+        top_path = Path(os.environ["CALIX_PATH"]) / f"G{guest_id}/data/no_water.gro"
+
+        self.lagtime = lagtime
+        self.guest_id = guest_id
+        self.traj_id = traj_id
+        self.length = self._load_length()
+        self.z_table = self._load_z_table()
+        self.cutoff = cutoff
+        traj = mdtraj_load([traj_path], top_path, 1)
+        if system_selection is not None:
+            system_atoms = traj.top.select(system_selection)
+            logger.info(f"System selection: {system_selection}")
+            traj = traj.atom_slice(system_atoms)
+        self.configs, self.z_table, _ = traj_to_confs(traj)
+        self._metadata = {
+            "system_selection": system_selection,
+            "lagtime_ns": float('nan'),
+        }
+
+
+    @property
+    def lagtime_ns(self):
+        return self.lagtime * self._metadata["lagtime_ns"]
+
+    @property
+    def system_selection(self):
+        return self._metadata["system_selection"]
+
+    def __len__(self):
+        return len(self.configs) - self.lagtime
+
+    def _getitem(self, idx):
+        config = self.configs[idx]
+        config_lagged = self.configs[idx + self.lagtime]
+
+        return self.convert_to_pyg(config), self.convert_to_pyg(config_lagged)
+
+    def convert_to_pyg(self, config):
+        pyg_data = _create_dataset_from_configuration(
+            config=config,
+            z_table=self.z_table,
+            cutoff=self.cutoff,
+            buffer=0.0,
+        )
+        return pyg_data
+
+    def __getitem__(self, index):
+        result_dict = {}
+        if isinstance(index, slice):
+            # Handle slice
+            index = range(*index.indices(self.__len__()))
+            raise NotImplementedError
+        elif isinstance(index, (list, tuple)):
+            # Handle list of indices
+            raise NotImplementedError
+
+        data = self._get_item(index)
+        result_dict = {
+            "item": data[0],
+            "item_lag": data[1],
+        }
+        return result_dict
 
 
 class DESRESDataset(Dataset):
