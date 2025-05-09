@@ -81,7 +81,9 @@ def main(config: Config):
         enable_model_summary=True,
     )
 
-    trainer.fit(model, train_dataloaders=train_dataloader)
+    trainer.fit(
+        model, train_dataloaders=train_dataloader
+    )
 
 
 if __name__ == "__main__":
