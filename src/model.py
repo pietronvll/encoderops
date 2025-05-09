@@ -95,6 +95,46 @@ class EvolutionOperator(lightning.LightningModule):
         transfer_operator = torch.linalg.solve(reg_cov, self.cross_cov)
         return transfer_operator
 
+    @torch.no_grad()
+    def update_covariances(self, f_t, f_lag_nolin, alpha: float = 0.99):
+        cov, cross_cov, f_mean = self.cov, self.cross_cov, self.f_mean
+        # Updating the mean
+        mean_new = f_t.mean(dim=0)
+        if self.trainer.world_size > 1:
+            torch.distributed.all_reduce(mean_new, op=torch.distributed.ReduceOp.SUM)
+            mean_new = mean_new / self.trainer.world_size
+        if self.trainer.global_step == 0:
+            f_mean = f_mean.copy_(mean_new)
+        else:
+            self._inplace_EMA(mean_new, f_mean, alpha)
+        # Updating the covariance
+        cov_new = covariance(f_t - f_mean.view(1, -1), center=False)
+        cross_cov_new = covariance(
+            f_t - f_mean.view(1, -1),
+            f_lag_nolin - f_mean.view(1, -1),
+            center=False,
+        )
+        # Gather values from all processes
+        if self.trainer.world_size > 1:
+            # Use all_reduce with AVG operation to average across all devices
+            torch.distributed.all_reduce(cov_new, op=torch.distributed.ReduceOp.SUM)
+            torch.distributed.all_reduce(
+                cross_cov_new, op=torch.distributed.ReduceOp.SUM
+            )
+            # Normalize by world_size since we summed across devices
+            cov_new = cov_new / self.trainer.world_size
+            cross_cov_new = cross_cov_new / self.trainer.world_size
+        if self.trainer.global_step == 0:
+            cov = cov.copy_(cov_new)
+            cross_cov = cross_cov.copy_(cross_cov_new)
+        else:
+            self._inplace_EMA(cov_new, cov, alpha)
+            self._inplace_EMA(cross_cov_new, cross_cov, alpha)
+
+    def _inplace_EMA(self, update, source_ref, alpha=0.99):
+        source_ref.mul_(alpha)
+        source_ref.add_(update, alpha=1 - alpha)
+
     def training_step(self, train_batch, batch_idx):
         # data
         x_t = self._setup_graph_data(train_batch)
@@ -133,37 +173,9 @@ class EvolutionOperator(lightning.LightningModule):
                 batch_size=f_t.shape[0],
             )
         # update covariances with EMA
-
         with torch.no_grad():
-            alpha = 0.99
-            # Updating the mean
-            mean_new = f_t.mean(dim=0)
-            if self.trainer.world_size > 1:
-                torch.distributed.all_reduce(
-                    mean_new, op=torch.distributed.ReduceOp.SUM
-                )
-                mean_new = mean_new / self.trainer.world_size
-            self.f_mean = alpha * self.f_mean + (1 - alpha) * mean_new
-            # Updating the covariance
-            cov_new = covariance(f_t - self.f_mean.view(1, -1), center=False)
             f_lag_nolin = self.forward_nn(x_lag, lagged=False)
-            cross_cov_new = covariance(
-                f_t - self.f_mean.view(1, -1),
-                f_lag_nolin - self.f_mean.view(1, -1),
-                center=False,
-            )
-            # Gather values from all processes
-            if self.trainer.world_size > 1:
-                # Use all_reduce with AVG operation to average across all devices
-                torch.distributed.all_reduce(cov_new, op=torch.distributed.ReduceOp.SUM)
-                torch.distributed.all_reduce(
-                    cross_cov_new, op=torch.distributed.ReduceOp.SUM
-                )
-                # Normalize by world_size since we summed across devices
-                cov_new = cov_new / self.trainer.world_size
-                cross_cov_new = cross_cov_new / self.trainer.world_size
-            self.cov = alpha * self.cov + (1 - alpha) * cov_new
-            self.cross_cov = alpha * self.cross_cov + (1 - alpha) * cross_cov_new
+            self.update_covariances(f_t, f_lag_nolin)
 
         # log
         with torch.no_grad():
@@ -175,12 +187,11 @@ class EvolutionOperator(lightning.LightningModule):
             "samples": self.global_step * f_t.shape[0] * self.trainer.world_size,
             "train_loss": -loss,
             "train_loss_noreg": -loss_noreg,
-            "effective_rank": effective_rank(svals),
+            "rank": effective_rank(torch.linalg.eigvalsh(self.cov)),
             "sigma_1": svals[-1].item(),
             "sigma_2": svals[-2].item(),
-            "timescale_1 (ns)": timescales[0],
-            "timescale_2 (ns)": timescales[1],
-            "timescale_3 (ns)": timescales[2],
+            "tau_1_ns": timescales[0],
+            "tau_2_ns": timescales[1],
         }
 
         self.log_dict(
@@ -347,16 +358,17 @@ class MultiTaskOperator(lightning.LightningModule):
         return transfer_operator
 
     @torch.no_grad()
-    def update_covariances(self, f_t, f_lag_nolin, system_id):
+    def update_covariances(self, f_t, f_lag_nolin, system_id, alpha: float = 0.99):
         cov, cross_cov, f_mean = self.get_buffers(system_id)
-        alpha = 0.99
         # Updating the mean
         mean_new = f_t.mean(dim=0)
         if self.trainer.world_size > 1:
             torch.distributed.all_reduce(mean_new, op=torch.distributed.ReduceOp.SUM)
             mean_new = mean_new / self.trainer.world_size
-
-        self._inplace_EMA(mean_new, f_mean, alpha)
+        if self.trainer.global_step == 0:
+            f_mean = f_mean.copy_(mean_new)
+        else:
+            self._inplace_EMA(mean_new, f_mean, alpha)
         # Updating the covariance
         cov_new = covariance(f_t - f_mean.view(1, -1), center=False)
         cross_cov_new = covariance(
@@ -374,8 +386,12 @@ class MultiTaskOperator(lightning.LightningModule):
             # Normalize by world_size since we summed across devices
             cov_new = cov_new / self.trainer.world_size
             cross_cov_new = cross_cov_new / self.trainer.world_size
-        self._inplace_EMA(cov_new, cov, alpha)
-        self._inplace_EMA(cross_cov_new, cross_cov, alpha)
+        if self.trainer.global_step == 0:
+            cov = cov.copy_(cov_new)
+            cross_cov = cross_cov.copy_(cross_cov_new)
+        else:
+            self._inplace_EMA(cov_new, cov, alpha)
+            self._inplace_EMA(cross_cov_new, cross_cov, alpha)
 
     def _inplace_EMA(self, update, source_ref, alpha=0.99):
         source_ref.mul_(alpha)
@@ -416,8 +432,8 @@ class MultiTaskOperator(lightning.LightningModule):
                 cov, _, _ = self.get_buffers(system_id)
                 eff_rank = effective_rank(torch.linalg.eigvalsh(cov))
                 log_dict[f"{self.system_names[system_id]} rank"] = eff_rank
-                log_dict[f"{self.system_names[system_id]} tau_1"] = timescales[0]
-                log_dict[f"{self.system_names[system_id]} tau_2"] = timescales[1]
+                log_dict[f"{self.system_names[system_id]} tau_1_ns"] = timescales[0]
+                log_dict[f"{self.system_names[system_id]} tau_2_ns"] = timescales[1]
 
         f_t, f_lag = torch.cat(f_t), torch.cat(f_lag)
         # opt

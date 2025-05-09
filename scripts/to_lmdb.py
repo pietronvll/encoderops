@@ -26,8 +26,8 @@ def main(
     top = next(protein_path.glob("*.pdb")).__str__()
     name = next(protein_path.glob("*.pdb")).stem
     traj = mdtraj_load(trajectory_files, top, 1)
-    system_atoms = traj.top.select(system_selection)
     if system_selection is not None:
+        system_atoms = traj.top.select(system_selection)
         logger.info(f"System selection: {system_selection}")
         traj = traj.atom_slice(system_atoms)
     configs, z_table, _ = traj_to_confs(traj)
