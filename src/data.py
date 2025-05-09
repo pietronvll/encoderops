@@ -33,35 +33,35 @@ def mdtraj_load(trajectory_files: list[str], top: str, stride: int = 1000):
 class CalixareneDataset(Dataset):
     def __init__(
         self,
-        guest_id: int,
+        protein_id: str,  # I know it is not a protein, but I'm inheriting this class from DESRES data.
         traj_id: int = 0,
         lagtime: int = 1,
         cutoff: float = 7.0,
         system_selection: str | None = "all and not type H",
+        _keep_mdtraj: bool = False,
     ):
         super().__init__()
         traj_path = (
-            Path(os.environ["CALIX_PATH"]) / f"G{guest_id}/traj/traj_com_{traj_id}.trr"
+            Path(os.environ["CALIX_PATH"]) / f"{protein_id}/traj/traj_com_{traj_id}.trr"
         )
-        top_path = Path(os.environ["CALIX_PATH"]) / f"G{guest_id}/data/no_water.gro"
+        top_path = Path(os.environ["CALIX_PATH"]) / f"{protein_id}/data/no_water.gro"
 
         self.lagtime = lagtime
-        self.guest_id = guest_id
+        self.protein_id = protein_id
         self.traj_id = traj_id
-        self.length = self._load_length()
-        self.z_table = self._load_z_table()
         self.cutoff = cutoff
         traj = mdtraj_load([traj_path], top_path, 1)
         if system_selection is not None:
             system_atoms = traj.top.select(system_selection)
             logger.info(f"System selection: {system_selection}")
             traj = traj.atom_slice(system_atoms)
+        if _keep_mdtraj:
+            self.traj = traj
         self.configs, self.z_table, _ = traj_to_confs(traj)
         self._metadata = {
             "system_selection": system_selection,
-            "lagtime_ns": float('nan'),
+            "lagtime_ns": 0.001,
         }
-
 
     @property
     def lagtime_ns(self):
@@ -74,7 +74,7 @@ class CalixareneDataset(Dataset):
     def __len__(self):
         return len(self.configs) - self.lagtime
 
-    def _getitem(self, idx):
+    def _get_item(self, idx):
         config = self.configs[idx]
         config_lagged = self.configs[idx + self.lagtime]
 

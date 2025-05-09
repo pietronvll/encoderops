@@ -21,7 +21,7 @@ class ModelArgs:
 @dataclass
 class DataArgs:
     protein_id: str
-    traj_id: int = 0
+    traj_id: int | list[int] = 0
     lagtime: int = 1
     batch_size: int = 64
     remove_isolated_nodes: bool = False
@@ -79,6 +79,28 @@ default_configs = {
             data_args=DataArgs(
                 protein_id="2F4K",
                 lagtime=1,
+                batch_size=64,
+            ),
+            num_devices=1,
+        ),
+    ),
+    "G1": (
+        "G1 system configs",
+        Config(
+            model_args=ModelArgs(
+                latent_dim=64,
+                encoder_lr=1e-2,
+                linear_lr=1e-2,
+                min_encoder_lr=1e-4,
+                epochs=50,
+                max_grad_norm=0.2,
+                normalize_lin=False,
+                regularization=1e-5,
+            ),
+            data_args=DataArgs(
+                protein_id="G1",
+                lagtime=500,
+                traj_id=[i for i in range(10)],
                 batch_size=64,
             ),
             num_devices=1,

@@ -6,22 +6,46 @@ from lightning import Trainer
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 from loguru import logger
+from torch.utils.data import ConcatDataset
 from torch_geometric.loader import DataLoader
 
 from src.configs import Config, default_configs
-from src.data import DESRESDataset
+from src.data import CalixareneDataset, DESRESDataset
 from src.model import EvolutionOperator
 
 
 def main(config: Config):
     # Data Loading
-    dataset = DESRESDataset(
-        config.data_args.protein_id,
-        traj_id=config.data_args.traj_id,
-        lagtime=config.data_args.lagtime,
-    )
+    if config.data_args.protein_id in ["G1", "G2", "G3", "G4", "G5"]:
+        if isinstance(config.data_args.traj_id, list):
+            datasets = [
+                CalixareneDataset(
+                    config.data_args.protein_id,
+                    traj_id=traj_id,
+                    lagtime=config.data_args.lagtime,
+                )
+                for traj_id in config.data_args.traj_id
+            ]
+            dataset = ConcatDataset(datasets)
+            dataset.cutoff = dataset.datasets[0].cutoff
+            dataset.lagtime_ns = dataset.datasets[0].lagtime_ns
+            dataset.protein_id = dataset.datasets[0].protein_id
+            dataset.z_table = dataset.datasets[0].z_table
+
+        else:
+            dataset = CalixareneDataset(
+                config.data_args.protein_id,
+                traj_id=config.data_args.traj_id,
+                lagtime=config.data_args.lagtime,
+            )
+    else:
+        dataset = DESRESDataset(
+            config.data_args.protein_id,
+            traj_id=config.data_args.traj_id,
+            lagtime=config.data_args.lagtime,
+        )
     logger.info(
-        f"Loaded dataset {dataset.protein_id}-{dataset.traj_id} | cutoff {dataset.cutoff} Ang | lagtime {dataset.lagtime_ns} ns"
+        f"Loaded dataset {dataset.protein_id} | cutoff {dataset.cutoff} Ang | lagtime {dataset.lagtime_ns} ns"
     )
 
     train_dataloader = DataLoader(
@@ -40,7 +64,7 @@ def main(config: Config):
     )
 
     wandb_logger = WandbLogger(
-        project=f"encoderops-{config.data_args.protein_id}-{config.data_args.traj_id}",
+        project=f"encoderops-{config.data_args.protein_id}",
         entity="csml",
         save_dir="./logs",
     )
