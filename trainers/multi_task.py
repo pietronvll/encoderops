@@ -9,7 +9,9 @@ from torch_geometric.loader import DataLoader
 from src.configs import MultiTaskConfig, default_configs
 from src.data import ConcatDESRES, DESRESDataset
 from src.model import MultiTaskOperator
+import torch
 
+torch.set_float32_matmul_precision('high')
 
 def main(config: MultiTaskConfig):
     # Data Loading

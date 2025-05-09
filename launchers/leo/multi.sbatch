@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --account=IscrC_LR4LSDS        # project name
+#SBATCH --account=IscrC_ERLO     # project name
 #SBATCH --partition=boost_usr_prod  # partition to be used
-#SBATCH --time 24:00:00             # format: HH:MM:SS
+#SBATCH --time 16:00:00             # format: HH:MM:SS
 #SBATCH --nodes=1                   # node
 #SBATCH --ntasks-per-node=4         # tasks out of 32
 #SBATCH --gres=gpu:4                # gpus per node out of 4
@@ -11,4 +11,4 @@
 export OMP_NUM_THREADS=1
 
 echo "Executing: uv run train.py $@"
-uv run --env-file=.env -- python -m trainers.multi_task $@ --num_devices=4 --batch_size=512
+uv run --env-file=.env -- srun python -m trainers.multi_task $@ --num_devices=4 --batch_size=512

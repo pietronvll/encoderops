@@ -11,4 +11,4 @@
 export OMP_NUM_THREADS=1
 
 echo "Executing: uv run train.py $@"
-uv run --env-file=.env -- python -m trainers.single_task $@ --num_devices=1 --data_args.batch_size=1024  
+uv run --env-file=.env -- srun python -m trainers.single_task $@ --num_devices=4 --data_args.batch_size=512  
