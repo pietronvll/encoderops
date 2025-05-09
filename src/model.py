@@ -62,6 +62,7 @@ class EvolutionOperator(lightning.LightningModule):
             model_args.latent_dim, model_args.latent_dim, bias=False
         )
         self._global_step = 0
+        self._samples = 0
         if self.model_args.normalize_lin:
             self.linear = spectral_norm(self.linear)
 
@@ -190,8 +191,10 @@ class EvolutionOperator(lightning.LightningModule):
             loss_noreg = self.loss.noreg(f_t, f_lag)
 
         self._global_step += 1
+        self._samples += f_t.shape[0]
         loss_dict = {
-            "samples": self._global_step * f_t.shape[0] * self.trainer.world_size,
+            "samples": self._samples * self.trainer.world_size,
+            "step": self._global_step,
             "train_loss": -loss,
             "train_loss_noreg": -loss_noreg,
             "rank": effective_rank(torch.linalg.eigvalsh(self.cov)),
@@ -324,6 +327,7 @@ class MultiTaskOperator(lightning.LightningModule):
                 }
             )
         self._global_step = 0
+        self._samples = 0
         self.loss = RegSpectralLoss(reg=model_args.regularization)
 
     def forward_nn(
@@ -480,7 +484,9 @@ class MultiTaskOperator(lightning.LightningModule):
 
         # log
         self._global_step += 1
-        log_dict["samples"] = self._global_step * f_t.shape[0] * self.trainer.world_size
+        self._samples += f_t.shape[0]
+        log_dict["samples"] = self._samples * self.trainer.world_size
+        log_dict["step"] = self._global_step
         log_dict["train_loss"] = -loss
         self.log_dict(
             log_dict,
