@@ -12,6 +12,9 @@ from torch_geometric.loader import DataLoader
 from src.configs import Config, default_configs
 from src.data import CalixareneDataset, DESRESDataset
 from src.model import EvolutionOperator
+import torch
+
+torch.set_float32_matmul_precision('high')
 
 
 def main(config: Config):
@@ -78,6 +81,7 @@ def main(config: Config):
         accelerator="cuda",
         devices=config.num_devices,
         max_epochs=config.model_args.epochs,
+        log_every_n_steps=1,
         enable_model_summary=True,
     )
 

@@ -19,6 +19,7 @@ def lin_svdvals(layer: torch.nn.Linear | torch.nn.Sequential) -> torch.Tensor:
 
 def effective_rank(s: torch.Tensor) -> float:
     # Compute the effective rank of T, which is the exponential of the entropy of the singular values
+    s = torch.clamp(s, min=1e-8) # Clip negative terms
     norm_s = s / s.sum()
     return torch.exp(-torch.sum(norm_s * torch.log(norm_s))).item()
 

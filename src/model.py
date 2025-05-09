@@ -61,6 +61,7 @@ class EvolutionOperator(lightning.LightningModule):
         self.linear = torch.nn.Linear(
             model_args.latent_dim, model_args.latent_dim, bias=False
         )
+        self._global_step = 0
         if self.model_args.normalize_lin:
             self.linear = spectral_norm(self.linear)
 
@@ -103,7 +104,10 @@ class EvolutionOperator(lightning.LightningModule):
         if self.trainer.world_size > 1:
             torch.distributed.all_reduce(mean_new, op=torch.distributed.ReduceOp.SUM)
             mean_new = mean_new / self.trainer.world_size
-        if self.trainer.global_step == 0:
+
+        if self._global_step == 0:
+            if self.global_rank == 0:
+                logger.info("Initialized Mean Buffer")
             f_mean = f_mean.copy_(mean_new)
         else:
             self._inplace_EMA(mean_new, f_mean, alpha)
@@ -124,7 +128,9 @@ class EvolutionOperator(lightning.LightningModule):
             # Normalize by world_size since we summed across devices
             cov_new = cov_new / self.trainer.world_size
             cross_cov_new = cross_cov_new / self.trainer.world_size
-        if self.trainer.global_step == 0:
+        if self._global_step == 0:
+            if self.global_rank == 0:
+                logger.info("Initialized Covariance Buffer")
             cov = cov.copy_(cov_new)
             cross_cov = cross_cov.copy_(cross_cov_new)
         else:
@@ -183,8 +189,9 @@ class EvolutionOperator(lightning.LightningModule):
             timescales = self.get_timescales()
             loss_noreg = self.loss.noreg(f_t, f_lag)
 
+        self._global_step += 1
         loss_dict = {
-            "samples": self.global_step * f_t.shape[0] * self.trainer.world_size,
+            "samples": self._global_step * f_t.shape[0] * self.trainer.world_size,
             "train_loss": -loss,
             "train_loss_noreg": -loss_noreg,
             "rank": effective_rank(torch.linalg.eigvalsh(self.cov)),
@@ -316,7 +323,7 @@ class MultiTaskOperator(lightning.LightningModule):
                     for system_id in range(self.num_systems)
                 }
             )
-
+        self._global_step = 0
         self.loss = RegSpectralLoss(reg=model_args.regularization)
 
     def forward_nn(
@@ -365,7 +372,9 @@ class MultiTaskOperator(lightning.LightningModule):
         if self.trainer.world_size > 1:
             torch.distributed.all_reduce(mean_new, op=torch.distributed.ReduceOp.SUM)
             mean_new = mean_new / self.trainer.world_size
-        if self.trainer.global_step == 0:
+        if self._global_step == 0:
+            if self.global_rank == 0:
+                logger.info("Initialized Mean Buffer")
             f_mean = f_mean.copy_(mean_new)
         else:
             self._inplace_EMA(mean_new, f_mean, alpha)
@@ -386,7 +395,9 @@ class MultiTaskOperator(lightning.LightningModule):
             # Normalize by world_size since we summed across devices
             cov_new = cov_new / self.trainer.world_size
             cross_cov_new = cross_cov_new / self.trainer.world_size
-        if self.trainer.global_step == 0:
+        if self._global_step == 0:
+            if self.global_rank == 0:
+                logger.info("Initialized Covariance Buffer")
             cov = cov.copy_(cov_new)
             cross_cov = cross_cov.copy_(cross_cov_new)
         else:
@@ -468,6 +479,8 @@ class MultiTaskOperator(lightning.LightningModule):
             )
 
         # log
+        self._global_step += 1
+        log_dict["samples"] = self._global_step * f_t.shape[0] * self.trainer.world_size
         log_dict["train_loss"] = -loss
         self.log_dict(
             log_dict,
