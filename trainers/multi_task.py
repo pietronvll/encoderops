@@ -73,7 +73,7 @@ def main(config: MultiTaskConfig):
         accelerator="cuda",
         devices=config.num_devices,
         max_epochs=config.model_args.epochs,
-        log_every_n_steps=1,
+        log_every_n_steps=10,
         enable_model_summary=True,
     )
 

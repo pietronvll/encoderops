@@ -60,7 +60,7 @@ default_configs = {
             ),
             data_args=DataArgs(
                 protein_id="CLN025",
-                lagtime=50,  # 10ns
+                lagtime=500,  # 10ns
             ),
         ),
     ),
@@ -79,7 +79,7 @@ default_configs = {
             ),
             data_args=DataArgs(
                 protein_id="2JOF",
-                lagtime=50,  # 10ns
+                lagtime=500,  # 100ns
             ),
         ),
     ),
@@ -98,7 +98,7 @@ default_configs = {
             ),
             data_args=DataArgs(
                 protein_id="2F4K",
-                lagtime=50,  # 10ns
+                lagtime=500,  # 100ns
             ),
         ),
     ),
@@ -138,9 +138,9 @@ default_configs = {
                 regularization=1e-5,
             ),
             data_args=[
-                DataArgs(protein_id="CLN025", lagtime=50),
-                DataArgs(protein_id="2JOF", lagtime=50),
-                DataArgs(protein_id="2F4K", lagtime=50),
+                DataArgs(protein_id="CLN025", lagtime=500),
+                DataArgs(protein_id="2JOF", lagtime=500),
+                DataArgs(protein_id="2F4K", lagtime=500),
             ],
             batch_size=32,
             num_devices=2,
