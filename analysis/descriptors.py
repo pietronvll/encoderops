@@ -125,14 +125,14 @@ def _HYDROGEN_BONDS(traj, kind, _cached_dists=None):
 
     # Find acceptors (O r N)
     acceptors = traj.top.select("symbol O or symbol N")
-    # hbonded = [ at_i.index
-    #            for at_i, at_j in traj.top.bonds
-    #            if (at_j.element.symbol == "H")
-    # ]
-    # acceptors = [idx
-    #            for idx in traj.top.select("symbol O or symbol N")
-    #            if idx not in hbonded
-    #            ]
+    hbonded = [ at_i.index
+               for at_i, at_j in traj.top.bonds
+               if (at_j.element.symbol == "H")
+    ]
+    acceptors = [idx
+               for idx in traj.top.select("symbol O or symbol N")
+               if idx not in hbonded
+               ]
     logging.info(f"Acceptors: {acceptors}")
 
     # lambda func to avoid selecting interaction within the same residue
