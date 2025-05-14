@@ -21,7 +21,7 @@ class ModelArgs:
 @dataclass
 class DataArgs:
     protein_id: str
-    traj_id: int | list[int] = 0
+    traj_id: int = 0
     lagtime: int = 1
     batch_size: int = 64
     remove_isolated_nodes: bool = False
@@ -102,28 +102,6 @@ default_configs = {
             ),
         ),
     ),
-    "G1": (
-        "G1 system configs",
-        Config(
-            model_args=ModelArgs(
-                latent_dim=64,
-                encoder_lr=1e-2,
-                linear_lr=1e-2,
-                min_encoder_lr=1e-4,
-                epochs=50,
-                max_grad_norm=0.2,
-                normalize_lin=False,
-                regularization=1e-5,
-            ),
-            data_args=DataArgs(
-                protein_id="G1",
-                lagtime=500,
-                traj_id=[i for i in range(10)],
-                batch_size=64,
-            ),
-            num_devices=1,
-        ),
-    ),
     "multitask": (
         "MultiTask - Chignolin Trp-cage Villin",
         MultiTaskConfig(
@@ -145,6 +123,99 @@ default_configs = {
             batch_size=32,
             num_devices=2,
             dataloader_workers=10,
+        ),
+    ),
+    "G1": (
+        "G1 system configs",
+        Config(
+            model_args=ModelArgs(
+                latent_dim=64,
+                encoder_lr=1e-2,
+                linear_lr=1e-2,
+                min_encoder_lr=1e-4,
+                epochs=25,
+                max_grad_norm=0.2,
+                normalize_lin=False,
+                regularization=1e-5,
+            ),
+            data_args=DataArgs(
+                protein_id="G1",
+                lagtime=500,
+                traj_id=9,
+                batch_size=64,
+            ),
+        ),
+    ),
+    "G2": (
+        "G2 system configs",
+        Config(
+            model_args=ModelArgs(
+                latent_dim=64,
+                encoder_lr=1e-2,
+                linear_lr=1e-2,
+                min_encoder_lr=1e-4,
+                epochs=25,
+                max_grad_norm=0.2,
+                normalize_lin=False,
+                regularization=1e-5,
+            ),
+            data_args=DataArgs(
+                protein_id="G2",
+                lagtime=500,
+                traj_id=9,
+                batch_size=64,
+            ),
+        ),
+    ),
+    "G3": (
+        "G3 system configs",
+        Config(
+            model_args=ModelArgs(
+                latent_dim=64,
+                encoder_lr=1e-2,
+                linear_lr=1e-2,
+                min_encoder_lr=1e-4,
+                epochs=25,
+                max_grad_norm=0.2,
+                normalize_lin=False,
+                regularization=1e-5,
+            ),
+            data_args=DataArgs(
+                protein_id="G3",
+                lagtime=500,
+                traj_id=9,
+                batch_size=64,
+            ),
+        ),
+    ),
+    "G13": (
+        "G1-G3 system configs",
+        MultiTaskConfig(
+            model_args=ModelArgs(
+                latent_dim=64,
+                encoder_lr=1e-2,
+                linear_lr=1e-2,
+                min_encoder_lr=1e-4,
+                epochs=25,
+                max_grad_norm=0.2,
+                normalize_lin=False,
+                regularization=1e-5,
+            ),
+            data_args=[
+                DataArgs(
+                    protein_id="G1",
+                    lagtime=500,
+                    traj_id=9,
+                    batch_size=64,
+                ),
+                DataArgs(
+                    protein_id="G3",
+                    lagtime=500,
+                    traj_id=9,
+                    batch_size=64,
+                ),
+            ],
+            batch_size=64,
         ),
     ),
 }
