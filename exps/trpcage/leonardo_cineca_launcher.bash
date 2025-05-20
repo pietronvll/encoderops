@@ -10,5 +10,5 @@
 
 export OMP_NUM_THREADS=1
 
-echo "Executing: uv run train.py $@"
+echo "========== trp-cage training script =========="
 uv run --env-file=.env -- srun python -m exps.trpcage.trainer trp-cage --trainer_args.batch_size=512  --offline
