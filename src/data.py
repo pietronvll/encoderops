@@ -32,17 +32,17 @@ class DESRESDataModule(LightningDataModule):
         super().__init__()
         self.args = args
         self.data_args = data_args
-        if self.data_args.lmdb_path is None:
-            lmdb_path = Path(os.environ["LMDB_PATH"])
+        if self.data_args.data_path is None:
+            data_path = Path(os.environ["DATA_PATH"])
         else:
-            lmdb_path = Path(self.data_args.lmdb_path)
-        self.lmdb_path = lmdb_path  # Preprocessed offline for the moment. Maybe move to prepare_data if asked to.
+            data_path = Path(self.data_args.data_path)
+        self.data_path = data_path  # Preprocessed offline for the moment. Maybe move to prepare_data if asked to.
         self.num_workers = num_workers
 
     def setup(self, stage):
         self.dataset = DESRESDataset(
             protein_id=self.data_args.protein_id,
-            lmdb_path=self.lmdb_path,
+            data_path=self.data_path,
             traj_id=self.data_args.traj_id,
             lagtime=self.data_args.lagtime,
             cutoff_ang=self.data_args.cutoff_ang,
@@ -56,19 +56,27 @@ class DESRESDataModule(LightningDataModule):
             num_workers=self.num_workers,
         )
 
+    def test_dataloader(self):
+        return PyGDataLoader(
+            self.dataset,
+            batch_size=self.args.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+        )
+
 
 class DESRESDataset(Dataset):
     def __init__(
         self,
         protein_id: str,
-        lmdb_path: Path,
+        data_path: Path,
         traj_id: int = 0,
         lagtime: int = 1,
         cutoff_ang: float = 7.0,
     ):
         super().__init__()
-        dataset_path = lmdb_path / f"{protein_id}-{traj_id}-protein.lmdb"
-        metadata_path = lmdb_path / f"metadata-{protein_id}-{traj_id}-protein.json"
+        dataset_path = data_path / f"{protein_id}-{traj_id}-protein.lmdb"
+        metadata_path = data_path / f"metadata-{protein_id}-{traj_id}-protein.json"
         map_size = 10_995_116_277_760  # 1 TB
         self.env = lmdb.open(
             dataset_path.__str__(),

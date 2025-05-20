@@ -39,11 +39,12 @@ class SchNetModelArgs:
     n_hidden_channels: int = 64
     "Number of hidden channels in the interaction layers"
 
+
 @dataclass
 class MLPModelArgs:
     n_hidden: int = 2
     "Number of hidden layers"
-    layer_size: int = 16                
+    layer_size: int = 16
     "Size of each hidden layer"
 
 
@@ -57,8 +58,8 @@ class DESRESDataArgs:
     "Lagtime (in number of frames) used to generate lagged data"
     cutoff_ang: float = 7.0
     "Cutoff distance in Angstroms for defining neighbors in the graph"
-    lmdb_path: str | None = None
-    "Path to the LMDB database. If None, tries to read the 'LMDB_PATH' environment variable"
+    data_path: str | None = None
+    "Path to the LMDB database. If None, tries to read the 'DATA_PATH' environment variable."
     remove_isolated_nodes: bool = False
     "Whether to remove isolated nodes from the graph"
 
