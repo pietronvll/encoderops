@@ -1,17 +1,24 @@
 from dataclasses import dataclass
+from typing import Literal
 
 
 @dataclass
-class ModelArgs:
+class TrainerArgs:
     latent_dim: int
     encoder_lr: float
     linear_lr: float
     epochs: int
+    batch_size: int
     max_grad_norm: float | None
     normalize_lin: bool
     regularization: float
     min_encoder_lr: float | None = None
+    normalize_latents: Literal["simnorm", "euclidean"] | None = "simnorm"
     simnorm_dim: int = 4
+
+
+@dataclass
+class SchNetModelArgs:
     n_bases: int = 16
     n_layers: int = 3
     n_filters: int = 32
@@ -19,203 +26,54 @@ class ModelArgs:
 
 
 @dataclass
-class DataArgs:
+class DESRESDataArgs:
     protein_id: str
+    "Protein ID"
     traj_id: int = 0
+    "Trajectory ID"
     lagtime: int = 1
-    batch_size: int = 64
+    "Lagtime (in number of frames) used to generate lagged data"
+    cutoff_ang: float = 7.0
+    "Cutoff distance in Angstroms for defining neighbors in the graph"
+    lmdb_path: str | None = None
+    "Path to the LMDB database. If None, tries to read the 'LMDB_PATH' environment variable"
     remove_isolated_nodes: bool = False
+    "Whether to remove isolated nodes from the graph"
 
 
 @dataclass
-class Config:
-    model_args: ModelArgs
-    data_args: DataArgs
-    num_devices: int = 1
+class Configs:
+    trainer_args: TrainerArgs
+    model_args: SchNetModelArgs
+    data_args: DESRESDataArgs
+    wandb_project: str
+    wandb_entity: str | None = None
+    offline: bool = False
+    num_devices: int = -1
     dataloader_workers: int = 8
 
 
-@dataclass
-class MultiTaskConfig:
-    model_args: ModelArgs
-    data_args: list[DataArgs]
-    batch_size: int
-    num_devices: int = 1
-    dataloader_workers: int = 8
-
-
-default_configs = {
-    "chignolin": (
-        "Chignolin - Single Task",
-        Config(
-            model_args=ModelArgs(
-                latent_dim=64,
-                encoder_lr=1e-2,
-                linear_lr=1e-2,
-                min_encoder_lr=1e-4,
-                epochs=45,
-                max_grad_norm=0.2,
-                normalize_lin=False,
-                regularization=1e-5,
-            ),
-            data_args=DataArgs(
-                protein_id="CLN025",
-                lagtime=500,  # 10ns
-            ),
-        ),
-    ),
+defaults = {
     "trp-cage": (
         "TRP-cage - Single Task",
-        Config(
-            model_args=ModelArgs(
+        Configs(
+            trainer_args=TrainerArgs(
                 latent_dim=64,
                 encoder_lr=1e-2,
                 linear_lr=1e-2,
-                min_encoder_lr=1e-4,
                 epochs=45,
+                batch_size=64,
                 max_grad_norm=0.2,
                 normalize_lin=False,
                 regularization=1e-5,
+                min_encoder_lr=1e-4,
             ),
-            data_args=DataArgs(
-                protein_id="2JOF",
+            model_args=SchNetModelArgs(),
+            data_args=DESRESDataArgs(
+                protein_id="CLN025",
                 lagtime=500,  # 100ns
             ),
-        ),
-    ),
-    "villin": (
-        "Villin - Single Task",
-        Config(
-            model_args=ModelArgs(
-                latent_dim=64,
-                encoder_lr=1e-2,
-                linear_lr=1e-2,
-                min_encoder_lr=1e-4,
-                epochs=45,
-                max_grad_norm=0.2,
-                normalize_lin=False,
-                regularization=1e-5,
-            ),
-            data_args=DataArgs(
-                protein_id="2F4K",
-                lagtime=500,  # 100ns
-            ),
-        ),
-    ),
-    "multitask": (
-        "MultiTask - Chignolin Trp-cage Villin",
-        MultiTaskConfig(
-            model_args=ModelArgs(
-                latent_dim=64,
-                encoder_lr=1e-2,
-                linear_lr=1e-2,
-                min_encoder_lr=1e-4,
-                epochs=15,
-                max_grad_norm=0.2,
-                normalize_lin=False,
-                regularization=1e-5,
-            ),
-            data_args=[
-                DataArgs(protein_id="CLN025", lagtime=500),
-                DataArgs(protein_id="2JOF", lagtime=500),
-                DataArgs(protein_id="2F4K", lagtime=500),
-            ],
-            batch_size=32,
-            num_devices=2,
-            dataloader_workers=10,
-        ),
-    ),
-    "G1": (
-        "G1 system configs",
-        Config(
-            model_args=ModelArgs(
-                latent_dim=64,
-                encoder_lr=1e-2,
-                linear_lr=1e-2,
-                min_encoder_lr=1e-4,
-                epochs=25,
-                max_grad_norm=0.2,
-                normalize_lin=False,
-                regularization=1e-5,
-            ),
-            data_args=DataArgs(
-                protein_id="G1",
-                lagtime=500,
-                traj_id=9,
-                batch_size=64,
-            ),
-        ),
-    ),
-    "G2": (
-        "G2 system configs",
-        Config(
-            model_args=ModelArgs(
-                latent_dim=64,
-                encoder_lr=1e-2,
-                linear_lr=1e-2,
-                min_encoder_lr=1e-4,
-                epochs=25,
-                max_grad_norm=0.2,
-                normalize_lin=False,
-                regularization=1e-5,
-            ),
-            data_args=DataArgs(
-                protein_id="G2",
-                lagtime=500,
-                traj_id=9,
-                batch_size=64,
-            ),
-        ),
-    ),
-    "G3": (
-        "G3 system configs",
-        Config(
-            model_args=ModelArgs(
-                latent_dim=64,
-                encoder_lr=1e-2,
-                linear_lr=1e-2,
-                min_encoder_lr=1e-4,
-                epochs=25,
-                max_grad_norm=0.2,
-                normalize_lin=False,
-                regularization=1e-5,
-            ),
-            data_args=DataArgs(
-                protein_id="G3",
-                lagtime=500,
-                traj_id=9,
-                batch_size=64,
-            ),
-        ),
-    ),
-    "G13": (
-        "G1-G3 system configs",
-        MultiTaskConfig(
-            model_args=ModelArgs(
-                latent_dim=64,
-                encoder_lr=1e-2,
-                linear_lr=1e-2,
-                min_encoder_lr=1e-4,
-                epochs=25,
-                max_grad_norm=0.2,
-                normalize_lin=False,
-                regularization=1e-5,
-            ),
-            data_args=[
-                DataArgs(
-                    protein_id="G1",
-                    lagtime=500,
-                    traj_id=9,
-                    batch_size=64,
-                ),
-                DataArgs(
-                    protein_id="G3",
-                    lagtime=500,
-                    traj_id=9,
-                    batch_size=64,
-                ),
-            ],
-            batch_size=64,
+            wandb_project="encoderops-2JOF",
         ),
     ),
 }
