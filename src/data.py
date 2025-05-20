@@ -3,6 +3,7 @@ import os
 import pickle
 from pathlib import Path
 from typing import Literal
+from dataclasses import asdict
 
 import mdtraj
 import torch.distributed
@@ -32,12 +33,15 @@ class DESRESDataModule(LightningDataModule):
         super().__init__()
         self.args = args
         self.data_args = data_args
-        if self.data_args.data_path is None:
+        self.data_path = self.parse_datapath(self.data_args.data_path)
+        self.num_workers = num_workers
+
+    def parse_datapath(self, data_path):
+        if data_path is None:
             data_path = Path(os.environ["DATA_PATH"])
         else:
-            data_path = Path(self.data_args.data_path)
-        self.data_path = data_path  # Preprocessed offline for the moment. Maybe move to prepare_data if asked to.
-        self.num_workers = num_workers
+            data_path = Path(data_path)
+        return data_path  # Preprocessed offline for the moment. Maybe move to prepare_data if asked to.
 
     def setup(self, stage):
         self.dataset = DESRESDataset(
@@ -47,6 +51,18 @@ class DESRESDataModule(LightningDataModule):
             lagtime=self.data_args.lagtime,
             cutoff_ang=self.data_args.cutoff_ang,
         )
+
+    def state_dict(self):
+        state = {
+            "data_args": asdict(self.data_args),
+            "num_workers": self.num_workers
+        }
+        return state
+    
+    def load_state_dict(self, state):
+        self.data_args = DESRESDataArgs(**state["data_args"])
+        self.num_workers = state["num_workers"]
+        self.data_path = self.parse_datapath(self.data_args.data_path)
 
     def train_dataloader(self):
         return PyGDataLoader(
