@@ -91,6 +91,7 @@ class DESRESDataset(Dataset):
         dataset_path = data_path / f"{protein_id}-{traj_id}-protein.lmdb"
         metadata_path = data_path / f"metadata-{protein_id}-{traj_id}-protein.json"
         map_size = 10_995_116_277_760  # 1 TB
+        print(dataset_path)
         self.env = lmdb.open(
             dataset_path.__str__(),
             map_size=map_size,
