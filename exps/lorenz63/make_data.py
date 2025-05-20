@@ -10,9 +10,11 @@ from loguru import logger
 
 def generate_dataset(
     local_dir: str | None = None,
-    n_train: int = 10_000,
-    n_val: int = 1_000,
-    dt: float = 0.001,
+    n_train: int = 10000,
+    n_val: int = 1000,
+    n_test: int = 1000,
+    buffer: int = 1000,
+    dt: float = 0.01,
 ) -> None:
     if local_dir is None:
         local_dir = str(Path().cwd().resolve())
@@ -23,7 +25,9 @@ def generate_dataset(
     data_path = Path(local_dir) / "data"
     data_path.mkdir(parents=True, exist_ok=True)  # Create directory if it doesn't exist
 
-    raw_data = Lorenz63(dt=dt).sample(X0=np.ones(3), T=n_train + 10000 + n_val)
+    raw_data = Lorenz63(dt=dt).sample(
+        X0=np.ones(3), T=buffer + n_train + buffer + n_val + buffer + n_test
+    )
     time = np.arange(len(raw_data)) * dt
     mean = np.mean(raw_data, axis=0)
     norm = np.max(np.abs(raw_data), axis=0)
@@ -31,10 +35,9 @@ def generate_dataset(
     data = (raw_data - mean) / norm
 
     dataset = {
-        "train": data[: n_train + 1],
-        "val": data[-n_val - 1 :],
-        "train_time": time[: n_train + 1],
-        "val_time": time[-n_val - 1 :],
+        "train": data[buffer : n_train + buffer],
+        "val": data[n_train + 2 * buffer : n_train + 2 * buffer + n_val],
+        "test": data[-n_test:],
     }
 
     fig = plt.figure(figsize=(6, 6))
@@ -50,6 +53,13 @@ def generate_dataset(
         dataset["val"][:, 0],
         dataset["val"][:, 1],
         dataset["val"][:, 2],
+        lw=2,
+        label="Validation data",
+    )
+    ax.plot(
+        dataset["test"][:, 0],
+        dataset["test"][:, 1],
+        dataset["test"][:, 2],
         lw=2,
         label="Test data",
     )
@@ -69,10 +79,13 @@ def generate_dataset(
     plt.close(fig)
 
     # Create xarray Dataset
-    # combined_data = np.concatenate([dataset["train"], dataset["val"]], axis=0)
-    # combined_time = np.concatenate([dataset["train_time"], dataset["val_time"]])
     split = np.array(
-        ["train"] * (n_train + 1) + ["buffer"] * 9999 + ["val"] * (n_val + 1)
+        ["buffer"] * (buffer + 1)
+        + ["train"] * (n_train)
+        + ["buffer"] * (buffer)
+        + ["val"] * (n_val)
+        + ["buffer"] * (buffer)
+        + ["test"] * (n_val)
     )
 
     ds = xr.Dataset(
