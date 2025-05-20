@@ -13,60 +13,50 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch_geometric.data import Batch
 
-from src.configs import DataArgs, ModelArgs
+from src.configs import TrainerArgs
 from src.loss import RegSpectralLoss
+from src.modules import EMACovariance, EuclideanNorm
 from src.utils import effective_rank, lin_svdvals
 
 
 class EvolutionOperator(lightning.LightningModule):
     def __init__(
         self,
-        cutoff: float,
-        atomic_numbers: List[int],
-        model_args: ModelArgs,
-        data_args: DataArgs,
+        encoder_cls: torch.nn.Module,
+        encoder_args: dict,
+        trainer_args: TrainerArgs,
     ):
         super().__init__()
+        self.trainer_args = trainer_args
+        self.encoder_args = encoder_args
         self.save_hyperparameters()
         self.automatic_optimization = False
 
-        self.model_args = model_args
-        self.data_args = data_args
-
-        encoder = SchNetModel(
-            n_out=model_args.latent_dim,
-            cutoff=cutoff,
-            atomic_numbers=atomic_numbers,
-            n_bases=model_args.n_bases,
-            n_layers=model_args.n_layers,
-            n_filters=model_args.n_filters,
-            n_hidden_channels=model_args.n_hidden_channels,
-        )
-
+        encoder = encoder_cls(**encoder_args)
         batch_norm = torch.nn.BatchNorm1d(
-            num_features=model_args.latent_dim, affine=False
+            num_features=self.trainer_args.latent_dim, affine=False
         )
 
-        if model_args.simnorm_dim > 0:
-            simnorm = SimNorm(dim=model_args.simnorm_dim)
+        self.covariances = EMACovariance(feature_dim=trainer_args.latent_dim)
+
+        if trainer_args.normalize_latents == "simnorm":
+            assert trainer_args.simnorm_dim > 0
+            simnorm = SimNorm(dim=trainer_args.simnorm_dim)
             self.encoder = torch.nn.Sequential(encoder, batch_norm, simnorm)
-        else:
+        elif trainer_args.normalize_latents == "euclidean":
+            euclidnorm = EuclideanNorm()
+            self.encoder = torch.nn.Sequential(encoder, batch_norm, euclidnorm)
+        else:  # None
             self.encoder = torch.nn.Sequential(encoder, batch_norm)
 
-        # Register buffers for covariance and cross-covariance matrices
-        self.register_buffer("f_mean", torch.ones(model_args.latent_dim))
-        self.register_buffer("cov", torch.eye(model_args.latent_dim))
-        self.register_buffer("cross_cov", torch.eye(model_args.latent_dim))
-
         self.linear = torch.nn.Linear(
-            model_args.latent_dim, model_args.latent_dim, bias=False
+            trainer_args.latent_dim, trainer_args.latent_dim, bias=False
         )
         self._global_step = 0
         self._samples = 0
-        if self.model_args.normalize_lin:
+        if self.trainer_args.normalize_lin:
             self.linear = spectral_norm(self.linear)
-
-        self.loss = RegSpectralLoss(reg=model_args.regularization)
+        self.loss = RegSpectralLoss(reg=trainer_args.regularization)
 
     def forward_nn(self, x: torch.Tensor, lagged: bool = False) -> torch.Tensor:
         x = self.encoder(x)
@@ -76,9 +66,6 @@ class EvolutionOperator(lightning.LightningModule):
 
     @torch.no_grad()
     def get_timescales(self):
-        """
-        Create a Wandb scatter plot of the eigenvalues of the transfer operator as currently estimated by self.cov and self.cross_cov
-        """
         transfer_operator = self.get_transfer_operator()
         operator_eigs = torch.linalg.eigvals(transfer_operator).numpy(force=True)
         lagtime_ns = self.trainer.train_dataloader.dataset.lagtime_ns
@@ -87,68 +74,16 @@ class EvolutionOperator(lightning.LightningModule):
 
     @torch.no_grad()
     def get_transfer_operator(self, reg: float = 1e-4):
-        reg_cov = (
-            reg
-            * torch.eye(
-                self.model_args.latent_dim, dtype=self.cov.dtype, device=self.cov.device
-            )
-            + self.cov
-        )
-        transfer_operator = torch.linalg.solve(reg_cov, self.cross_cov)
+        d = self.trainer_args.latent_dim
+        regularizer = reg * torch.eye(d, out=torch.empty_like(self.covariances.cov_X))
+        reg_cov = regularizer + self.covariances.cov_X
+        transfer_operator = torch.linalg.solve(reg_cov, self.covariances.cov_XY)
         return transfer_operator
 
-    @torch.no_grad()
-    def update_covariances(self, f_t, f_lag_nolin, alpha: float = 0.99):
-        cov, cross_cov, f_mean = self.cov, self.cross_cov, self.f_mean
-        # Updating the mean
-        mean_new = f_t.mean(dim=0)
-        if self.trainer.world_size > 1:
-            torch.distributed.all_reduce(mean_new, op=torch.distributed.ReduceOp.SUM)
-            mean_new = mean_new / self.trainer.world_size
-
-        if self._global_step == 0:
-            if self.global_rank == 0:
-                logger.info("Initialized Mean Buffer")
-            f_mean = f_mean.copy_(mean_new)
-        else:
-            self._inplace_EMA(mean_new, f_mean, alpha)
-        # Updating the covariance
-        cov_new = covariance(f_t - f_mean.view(1, -1), center=False)
-        cross_cov_new = covariance(
-            f_t - f_mean.view(1, -1),
-            f_lag_nolin - f_mean.view(1, -1),
-            center=False,
-        )
-        # Gather values from all processes
-        if self.trainer.world_size > 1:
-            # Use all_reduce with AVG operation to average across all devices
-            torch.distributed.all_reduce(cov_new, op=torch.distributed.ReduceOp.SUM)
-            torch.distributed.all_reduce(
-                cross_cov_new, op=torch.distributed.ReduceOp.SUM
-            )
-            # Normalize by world_size since we summed across devices
-            cov_new = cov_new / self.trainer.world_size
-            cross_cov_new = cross_cov_new / self.trainer.world_size
-        if self._global_step == 0:
-            if self.global_rank == 0:
-                logger.info("Initialized Covariance Buffer")
-            cov = cov.copy_(cov_new)
-            cross_cov = cross_cov.copy_(cross_cov_new)
-        else:
-            self._inplace_EMA(cov_new, cov, alpha)
-            self._inplace_EMA(cross_cov_new, cross_cov, alpha)
-
-    def _inplace_EMA(self, update, source_ref, alpha=0.99):
-        source_ref.mul_(alpha)
-        source_ref.add_(update, alpha=1 - alpha)
-
     def training_step(self, train_batch, batch_idx):
-        # data
-        x_t = self._setup_graph_data(train_batch)
-        x_lag = self._setup_graph_data(train_batch, key="item_lag")
         # forward
-        f_t = self.forward_nn(x_t)
-        f_lag = self.forward_nn(x_lag, lagged=True)
+        f_t = self.forward_nn(train_batch)
+        f_lag = self.forward_nn(train_batch, lagged=True)
         # opt
         # opt:zero_grad
         for opt in self.optimizers():
@@ -158,16 +93,16 @@ class EvolutionOperator(lightning.LightningModule):
         # opt:backard
         self.manual_backward(loss)
         # opt:grad_clip
-        if self.model_args.max_grad_norm is not None:
+        if self.trainer_args.max_grad_norm is not None:
             torch.nn.utils.clip_grad_norm_(
-                self.encoder.parameters(), max_norm=self.model_args.max_grad_norm
+                self.encoder.parameters(), max_norm=self.trainer_args.max_grad_norm
             )
         # opt:step
         for opt in self.optimizers():
             opt.step()
 
         # opt:scheduler_step
-        if self.model_args.min_encoder_lr is not None:
+        if self.trainer_args.min_encoder_lr is not None:
             sch = self.lr_schedulers()
             if self.trainer.is_last_batch:
                 sch.step()
@@ -182,7 +117,7 @@ class EvolutionOperator(lightning.LightningModule):
         # update covariances with EMA
         with torch.no_grad():
             f_lag_nolin = self.forward_nn(x_lag, lagged=False)
-            self.update_covariances(f_t, f_lag_nolin)
+            self.covariances(f_t, f_lag_nolin)
 
         # log
         with torch.no_grad():
@@ -217,7 +152,7 @@ class EvolutionOperator(lightning.LightningModule):
     def on_train_start(self):
         if self.global_rank == 0:
             logger.info(f"Checkpoints at {self.trainer.checkpoint_callback.dirpath}")
-            for k, v in asdict(self.model_args).items():
+            for k, v in asdict(self.trainer_args).items():
                 if k not in self.logger.experiment.config.keys():
                     self.logger.experiment.config[k] = v
 
@@ -228,9 +163,9 @@ class EvolutionOperator(lightning.LightningModule):
 
         encoder_opt = Adam(
             self.encoder.parameters(),
-            lr=self.model_args.encoder_lr,
+            lr=self.trainer_args.encoder_lr,
         )
-        linear_opt = Adam(self.linear.parameters(), lr=self.model_args.linear_lr)
+        linear_opt = Adam(self.linear.parameters(), lr=self.trainer_args.linear_lr)
 
         configuration = (
             {
@@ -241,11 +176,11 @@ class EvolutionOperator(lightning.LightningModule):
             },
         )
 
-        if self.model_args.min_encoder_lr is not None:
+        if self.trainer_args.min_encoder_lr is not None:
             scheduler = CosineAnnealingLR(
                 encoder_opt,
-                T_max=self.model_args.epochs,
-                eta_min=self.model_args.min_encoder_lr,  # Minimum learning rate
+                T_max=self.trainer_args.epochs,
+                eta_min=self.trainer_args.min_encoder_lr,  # Minimum learning rate
             )
             configuration[0]["lr_scheduler"] = scheduler
 

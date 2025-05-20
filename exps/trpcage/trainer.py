@@ -1,5 +1,7 @@
 # uv run python -m exps.trpcage.trainer trp-cage --help
 
+from dataclasses import asdict
+
 import tyro
 from lightning import Trainer
 from lightning.pytorch.callbacks import ModelCheckpoint
@@ -7,6 +9,8 @@ from lightning.pytorch.loggers import WandbLogger
 
 from src.configs import Configs, defaults
 from src.data import DESRESDataModule
+from src.model import EvolutionOperator
+from src.modules import SchNet
 
 
 def main(cfg: Configs):
@@ -35,17 +39,16 @@ def main(cfg: Configs):
         log_every_n_steps=10,
         enable_model_summary=True,
     )
+    encoder_args = {
+        "n_out": cfg.trainer_args.latent_dim,
+        "cutoff": cfg.data_args.cutoff,
+        "atomic_numbers": datamodule.dataset.z_table.zs,
+    }
+    encoder_args = encoder_args | asdict(cfg.model_args)
+    model = EvolutionOperator(SchNet, encoder_args, cfg.trainer_args)
     trainer.fit(model, datamodule=datamodule)
-
-
-def test_trainer(cfg: Configs):
-    for lmdb_path in ["/home/novelli/encoderops/lmdb", None]:
-        datamodule = DESRESDataModule(
-            cfg.trainer_args, cfg.data_args, cfg.dataloader_workers
-        )
-        datamodule.setup("fit")
 
 
 if __name__ == "__main__":
     config = tyro.extras.overridable_config_cli(defaults)
-    test_trainer(config)
+    main(config)
