@@ -4,21 +4,21 @@ from typing import Literal
 
 @dataclass
 class TrainerArgs:
-    latent_dim: int 
+    latent_dim: int
     "Dimension of the latent space"
-    encoder_lr: float 
+    encoder_lr: float
     "Learning rate for the encoder"
-    linear_lr: float 
+    linear_lr: float
     "Learning rate for the linear (transfer operator) layer"
-    epochs: int 
+    epochs: int
     "Number of training epochs"
-    batch_size: int 
+    batch_size: int
     "Batch size for training"
     max_grad_norm: float | None
     "Maximum gradient norm for gradient clipping. If None, no clipping is performed"
-    normalize_lin: bool 
+    normalize_lin: bool
     "Whether to apply spectral normalization to the linear layer"
-    regularization: float 
+    regularization: float
     "Regularization strength for the spectral loss"
     min_encoder_lr: float | None = None
     "Minimum learning rate for the encoder, used in cosine annealing scheduler. If None, no scheduler is used"
@@ -36,8 +36,15 @@ class SchNetModelArgs:
     "Number of interaction layers"
     n_filters: int = 32
     "Number of filters in the interaction layers"
-    n_hidden_channels: int = 64 
+    n_hidden_channels: int = 64
     "Number of hidden channels in the interaction layers"
+
+@dataclass
+class MLPModelArgs:
+    n_hidden: int = 2
+    "Number of hidden layers"
+    layer_size: int = 16                
+    "Size of each hidden layer"
 
 
 @dataclass
@@ -57,10 +64,20 @@ class DESRESDataArgs:
 
 
 @dataclass
+class Lorenz63DataArgs:
+    lagtime: int = 1
+    "Lagtime (in number of frames) used to generate lagged data"
+    history_len: int = 1
+    "Number of frames to use as history"
+    data_path: str | None = None
+    "Path to the data file. If None, tries to read the 'DATA_PATH' environment variable"
+
+
+@dataclass
 class Configs:
     trainer_args: TrainerArgs
-    model_args: SchNetModelArgs
-    data_args: DESRESDataArgs
+    model_args: SchNetModelArgs | MLPModelArgs
+    data_args: DESRESDataArgs | Lorenz63DataArgs
     wandb_project: str
     wandb_entity: str | None = None
     offline: bool = False
@@ -70,7 +87,7 @@ class Configs:
 
 defaults = {
     "trp-cage": (
-        "TRP-cage - Single Task",
+        "TRP-cage Experiment",
         Configs(
             trainer_args=TrainerArgs(
                 latent_dim=64,
@@ -89,6 +106,25 @@ defaults = {
                 lagtime=500,  # 100ns
             ),
             wandb_project="encoderops-2JOF",
+        ),
+    ),
+    "l63": (
+        "Lorenz63",
+        Configs(
+            trainer_args=TrainerArgs(
+                latent_dim=8,
+                encoder_lr=1e-3,
+                linear_lr=1e-2,
+                epochs=100,
+                batch_size=512,
+                max_grad_norm=None,
+                normalize_lin=True,
+                regularization=0.0,
+                min_encoder_lr=1e-4,
+            ),
+            model_args=MLPModelArgs(),
+            data_args=Lorenz63DataArgs(lagtime=10, history_len=1),
+            wandb_project="encoderops-lorenz63",
         ),
     ),
 }

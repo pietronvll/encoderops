@@ -68,8 +68,11 @@ class EvolutionOperator(lightning.LightningModule):
     def get_timescales(self):
         transfer_operator = self.get_transfer_operator()
         operator_eigs = torch.linalg.eigvals(transfer_operator).numpy(force=True)
-        lagtime_ns = self.trainer.train_dataloader.dataset.lagtime_ns
-        timescales = np.sort((1 / -np.log(np.abs(operator_eigs))) * lagtime_ns)[::-1]
+        if hasattr(self.trainer.train_dataloader.dataset, "lagtime_ns"):
+            lagtime = self.trainer.train_dataloader.dataset.lagtime_ns
+        else:
+            lagtime = self.trainer.train_dataloader.dataset.lagtime
+        timescales = np.sort((1 / -np.log(np.abs(operator_eigs))) * lagtime)[::-1]
         return timescales
 
     @torch.no_grad()
@@ -137,6 +140,28 @@ class EvolutionOperator(lightning.LightningModule):
             "sigma_2": svals[-2].item(),
             "tau_1_ns": timescales[0],
             "tau_2_ns": timescales[1],
+        }
+
+        self.log_dict(
+            dict(loss_dict),
+            on_step=True,
+            on_epoch=False,
+            sync_dist=False,
+            prog_bar=True,
+            batch_size=f_t.shape[0],
+        )
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        x_t, x_lag = self.encoder.prepare_batch(batch)
+        f_t = self.forward_nn(x_t)
+        f_lag = self.forward_nn(x_lag, lagged=True)
+        loss = self.loss(f_t, f_lag)
+        loss_noreg = self.loss.noreg(f_t, f_lag)
+
+        loss_dict = {
+            "val_loss": -loss,
+            "val_loss_noreg": -loss_noreg,
         }
 
         self.log_dict(

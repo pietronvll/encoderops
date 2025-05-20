@@ -1,11 +1,12 @@
-import bisect
 import json
 import os
 import pickle
 from pathlib import Path
+from typing import Literal
 
 import mdtraj
 import torch.distributed
+import xarray as xr
 from lightning import LightningDataModule
 from loguru import logger
 from mlcolvar.data.graph.utils import _create_dataset_from_configuration
@@ -14,11 +15,11 @@ from mlcolvar.utils.io import (
     _names_from_top,
     _z_table_from_top,
 )
-from torch.utils.data import ConcatDataset, Dataset
-from torch_geometric.loader import DataLoader
+from torch.utils.data import DataLoader, Dataset
+from torch_geometric.loader import DataLoader as PyGDataLoader
 
 import lmdb
-from src.configs import DESRESDataArgs, TrainerArgs
+from src.configs import DESRESDataArgs, Lorenz63DataArgs, TrainerArgs
 
 
 class DESRESDataModule(LightningDataModule):
@@ -48,7 +49,7 @@ class DESRESDataModule(LightningDataModule):
         )
 
     def train_dataloader(self):
-        return DataLoader(
+        return PyGDataLoader(
             self.dataset,
             batch_size=self.args.batch_size,
             shuffle=True,
@@ -250,20 +251,128 @@ class CalixareneDataset(Dataset):
         return result_dict
 
 
-class ConcatDESRES(ConcatDataset):
-    def __init__(self, *a, **kw):
-        super().__init__(*a, **kw)
+class Lorenz63DataModule(LightningDataModule):
+    def __init__(
+        self,
+        args: TrainerArgs,
+        data_args: Lorenz63DataArgs,
+        num_workers: int,
+    ):
+        super().__init__()
+        self.args = args
+        self.data_args = data_args
+        if self.data_args.data_path is None:
+            data_path = Path(os.environ["DATA_PATH"])
+        else:
+            data_path = Path(self.data_args.data_path)
+        self.data_path = data_path  # Preprocessed offline for the moment. Maybe move to prepare_data if asked to.
+        self.num_workers = num_workers
+
+    def prepare_data(self):
+        if not (self.data_path / "lorenz63_dataset.nc").exists():
+            logger.info("Downloading Lorenz63 dataset")
+            import huggingface_hub as hf
+
+            hf.hf_hub_download(
+                repo_id="pnovelli/encoderops",
+                filename="lorenz63_dataset.nc",
+                repo_type="dataset",
+                local_dir=self.data_path,
+            )
+
+    def setup(self, stage):
+        self.train_dataset = Lorenz63Dataset(
+            lagtime=self.data_args.lagtime,
+            history_len=self.data_args.history_len,
+            data_path=self.data_path,
+            split="train",
+        )
+        self.val_dataset = Lorenz63Dataset(
+            lagtime=self.data_args.lagtime,
+            history_len=self.data_args.history_len,
+            data_path=self.data_path,
+            split="val",
+        )
+
+    def train_dataloader(self):
+        return DataLoader(
+            self.train_dataset,
+            batch_size=self.args.batch_size,
+            shuffle=True,
+            num_workers=self.num_workers,
+        )
+
+    def val_dataloader(self):
+        return DataLoader(
+            self.val_dataset,
+            batch_size=self.args.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+        )
+
+
+class Lorenz63Dataset(Dataset):
+    def __init__(
+        self,
+        lagtime: int = 1,
+        history_len: int = 0,
+        data_path: str | Path | None = None,
+        split: Literal["train", "val"] = "train",
+    ):
+        # If data_path is not specified, read it from the environment variable "DATA_PATH"
+        self.lagtime = lagtime
+        self.history_len = history_len
+        self.split = split
+
+        if data_path is None:
+            try:
+                data_path = os.environ["DATA_PATH"]
+            except KeyError:
+                raise ValueError(
+                    "data_path environment variable is not set, and data_path is not provided."
+                )
+        logger.info(f"Data path: {data_path}")
+
+        dataset_path = Path(data_path) / "lorenz63_dataset.nc"
+        ds = xr.open_dataset(dataset_path)
+        self.ds = ds.sel(time=ds.split == split)
+        self.data = ds["trajectory"].values
+        self.time = ds["time"].values
+
+        logger.info(
+            f"Dataset loaded with {self.num_samples} samples and {self.num_variables} variables."
+        )
+
+    def __len__(self):
+        return self.num_samples
+
+    @property
+    def num_variables(self):
+        return self.ds.sizes["dim"]
+
+    @property
+    def num_samples(self):
+        return len(self.ds.time) - self.history_len - self.lagtime
+
+    def _load_sample(self, idx: int):
+        x_selectors = [idx - h + self.history_len for h in range(self.history_len + 1)]
+        y_selectors = [x_id + self.lagtime for x_id in x_selectors]
+        x = self.data[x_selectors]
+        y = self.data[y_selectors]
+
+        x = x.reshape((-1, *x.shape[2:]))
+        y = y.reshape((-1, *y.shape[2:]))
+
+        x = torch.from_numpy(x).float()
+        y = torch.from_numpy(y).float()
+
+        return x, y, str(self.time[idx + self.history_len])
 
     def __getitem__(self, idx):
-        if idx < 0:
-            if -idx > len(self):
-                raise ValueError(
-                    "absolute value of index should not exceed dataset length"
-                )
-            idx = len(self) + idx
-        dataset_idx = bisect.bisect_right(self.cumulative_sizes, idx)
-        if dataset_idx == 0:
-            sample_idx = idx
-        else:
-            sample_idx = idx - self.cumulative_sizes[dataset_idx - 1]
-        return self.datasets[dataset_idx][sample_idx], dataset_idx
+        if isinstance(idx, slice):
+            raise NotImplementedError
+        elif isinstance(idx, (list, tuple)):
+            raise NotImplementedError
+
+        x, y, t = self._load_sample(idx)
+        return {"x": x, "y": y, "time": t}
