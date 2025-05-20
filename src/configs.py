@@ -70,7 +70,7 @@ defaults = {
             ),
             model_args=SchNetModelArgs(),
             data_args=DESRESDataArgs(
-                protein_id="CLN025",
+                protein_id="2JOF",
                 lagtime=500,  # 100ns
             ),
             wandb_project="encoderops-2JOF",
