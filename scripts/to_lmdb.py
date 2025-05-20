@@ -23,7 +23,6 @@ def main(
         / f"DESRES-Trajectory_{protein_id}-{traj_id}-protein/{protein_id}-{traj_id}-protein"
     )
     trajectory_files = sorted([str(traj) for traj in protein_path.glob("*.dcd")])
-    print(trajectory_files)
     top = next(protein_path.glob("*.pdb")).__str__()
     name = next(protein_path.glob("*.pdb")).stem
     traj = mdtraj_load(trajectory_files, top, 1)
@@ -36,9 +35,7 @@ def main(
         "system_selection": system_selection,
         "lagtime_ns": 0.2,
     }
-    #database_path = Path(__file__).parent.parent / "lmdb"
-    database_path = Path("/tmp/lmdb/")
-    # database_path = protein_path.parent / "lmdb"
+    database_path = Path(__file__).parent.parent / "lmdb"
     logger.info(database_path.__str__())
     if not database_path.exists():
         database_path.mkdir(parents=True)

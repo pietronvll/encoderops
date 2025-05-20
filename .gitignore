@@ -12,6 +12,7 @@ wheels/
 lmdb
 encoderops_chignolin
 wandb
+datasets
 *.code-workspace
 logs
 *.out
