@@ -69,14 +69,6 @@ class DESRESDataModule(LightningDataModule):
             num_workers=self.num_workers,
         )
 
-    def test_dataloader(self):
-        return PyGDataLoader(
-            self.dataset,
-            batch_size=self.args.batch_size,
-            shuffle=False,
-            num_workers=self.num_workers,
-        )
-
 
 class DESRESDataset(Dataset):
     def __init__(
@@ -111,6 +103,10 @@ class DESRESDataset(Dataset):
                 logger.info(
                     f"Loaded {self.protein_id}-{self.traj_id} | lagtime {self.lagtime_ns} ns | cutoff {self.cutoff} angs"
                 )
+        else:
+            logger.info(
+                f"Loaded {self.protein_id}-{self.traj_id} | lagtime {self.lagtime_ns} ns | cutoff {self.cutoff} angs"
+            )
 
     def _load_length(self):
         item_key = "__len__".encode()
@@ -283,12 +279,17 @@ class Lorenz63DataModule(LightningDataModule):
         super().__init__()
         self.args = args
         self.data_args = data_args
-        if self.data_args.data_path is None:
+        self.data_path = self.parse_datapath(
+            self.data_args.data_path
+        )  # Preprocessed offline for the moment. Maybe move to prepare_data if asked to.
+        self.num_workers = num_workers
+
+    def parse_datapath(self, data_path):
+        if data_path is None:
             data_path = Path(os.environ["DATA_PATH"])
         else:
-            data_path = Path(self.data_args.data_path)
-        self.data_path = data_path  # Preprocessed offline for the moment. Maybe move to prepare_data if asked to.
-        self.num_workers = num_workers
+            data_path = Path(data_path)
+        return data_path  # Preprocessed offline for the moment. Maybe move to prepare_data if asked to.
 
     def prepare_data(self):
         if not (self.data_path / "lorenz63/lorenz63_dataset.nc").exists():
@@ -301,6 +302,15 @@ class Lorenz63DataModule(LightningDataModule):
                 repo_type="dataset",
                 local_dir=self.data_path,
             )
+
+    def state_dict(self):
+        state = {"data_args": asdict(self.data_args), "num_workers": self.num_workers}
+        return state
+
+    def load_state_dict(self, state):
+        self.data_args = Lorenz63DataArgs(**state["data_args"])
+        self.num_workers = state["num_workers"]
+        self.data_path = self.parse_datapath(self.data_args.data_path)
 
     def setup(self, stage):
         self.train_dataset = Lorenz63Dataset(
@@ -337,7 +347,7 @@ class Lorenz63DataModule(LightningDataModule):
             shuffle=False,
             num_workers=self.num_workers,
         )
-    
+
     def test_dataloader(self):
         return DataLoader(
             self.test_dataloader,
@@ -367,17 +377,21 @@ class Lorenz63Dataset(Dataset):
                 raise ValueError(
                     "data_path environment variable is not set, and data_path is not provided."
                 )
-        logger.info(f"Data path: {data_path}")
 
-        dataset_path = Path(data_path) / "lorenz63_dataset.nc"
+        dataset_path = Path(data_path) / "lorenz63/lorenz63_dataset.nc"
         ds = xr.open_dataset(dataset_path)
         self.ds = ds.sel(time=ds.split == split)
         self.data = ds["trajectory"].values
         self.time = ds["time"].values
-
-        logger.info(
-            f"Dataset loaded with {self.num_samples} samples and {self.num_variables} variables."
-        )
+        if torch.distributed.is_initialized():
+            if torch.distributed.get_rank() == 0:
+                logger.info(
+                    f"Dataset loaded with {self.num_samples} samples and {self.num_variables} variables."
+                )
+        else:
+            logger.info(
+                f"Dataset loaded with {self.num_samples} samples and {self.num_variables} variables."
+            )
 
     def __len__(self):
         return self.num_samples
