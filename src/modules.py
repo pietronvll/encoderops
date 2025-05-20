@@ -2,17 +2,13 @@ import torch
 import torch.distributed
 from mlcolvar.core.nn.graph.schnet import SchNetModel
 
+
 class SchNet(torch.nn.Module):
-    def __init__(self, model_args):
+    def __init__(self, **model_args):
         super().__init__()
         self.model = SchNetModel(**model_args)
-    
-    def forward(self, data, lagged: bool = False):
-        # data
-        if lagged:
-            data = self._setup_graph_data(data, key="item_lag")
-        else:
-            data = self._setup_graph_data(data)
+
+    def forward(self, data):
         return self.model(data)
 
     @staticmethod
@@ -21,8 +17,11 @@ class SchNet(torch.nn.Module):
         data["positions"].requires_grad_(True)
         data["node_attrs"].requires_grad_(True)
         return data
-    
-    
+
+    def prepare_batch(self, train_batch):
+        x_t = self._setup_graph_data(train_batch, key="item")
+        x_t_lag = self._setup_graph_data(train_batch, key="item_lag")
+        return x_t, x_t_lag
 
 
 class EMACovariance(torch.nn.Module):
@@ -36,20 +35,20 @@ class EMACovariance(torch.nn.Module):
         self.register_buffer("cov_Y", torch.eye(feature_dim))
         self.register_buffer("cov_XY", torch.eye(feature_dim))
         self._has_been_called_once = False
-    
+
     @torch.no_grad()
     def forward(self, X: torch.Tensor, Y: torch.Tensor):
         assert X.ndim == 2
         assert X.shape == Y.shape
         assert X.shape[1] == self.mean_X.shape[0]
         if not self._has_been_called_once:
-            self.first_forward(X, Y)
+            self._first_forward(X, Y)
         else:
             mean_X = X.mean(dim=0, keepdim=True)
             mean_Y = Y.mean(dim=0, keepdim=True)
-
-            self.mean_X = self._inplace_EMA(mean_X[0], self.mean_X)
-            self.mean_Y = self._inplace_EMA(mean_Y[0], self.mean_Y)
+            # Update means
+            self._inplace_EMA(mean_X[0], self.mean_X)
+            self._inplace_EMA(mean_Y[0], self.mean_Y)
 
             if self.is_centered:
                 X = X - self.mean_X
@@ -58,9 +57,10 @@ class EMACovariance(torch.nn.Module):
             cov_X = torch.mm(X.T, X) / X.shape[0]
             cov_Y = torch.mm(Y.T, Y) / Y.shape[0]
             cov_XY = torch.mm(X.T, Y) / X.shape[0]
-            self.cov_X = self._inplace_EMA(cov_X, self.cov_X)
-            self.cov_Y = self._inplace_EMA(cov_Y, self.cov_Y)
-            self.cov_XY = self._inplace_EMA(cov_XY, self.cov_XY)
+            # Update covariances
+            self._inplace_EMA(cov_X, self.cov_X)
+            self._inplace_EMA(cov_Y, self.cov_Y)
+            self._inplace_EMA(cov_XY, self.cov_XY)
 
     def _first_forward(self, X: torch.Tensor, Y: torch.Tensor):
         mean_X = X.mean(dim=0, keepdim=True)
@@ -100,4 +100,3 @@ class EuclideanNorm(torch.nn.Module):
 
     def forward(self, X: torch.Tensor):
         return torch.nn.functional.normalize(X, dim=-1)
-        

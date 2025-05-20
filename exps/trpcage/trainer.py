@@ -41,7 +41,7 @@ def main(cfg: Configs):
     )
     encoder_args = {
         "n_out": cfg.trainer_args.latent_dim,
-        "cutoff": cfg.data_args.cutoff,
+        "cutoff": cfg.data_args.cutoff_ang,
         "atomic_numbers": datamodule.dataset.z_table.zs,
     }
     encoder_args = encoder_args | asdict(cfg.model_args)

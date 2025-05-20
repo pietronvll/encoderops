@@ -5,6 +5,7 @@ import pickle
 from pathlib import Path
 
 import mdtraj
+import torch.distributed
 from lightning import LightningDataModule
 from loguru import logger
 from mlcolvar.data.graph.utils import _create_dataset_from_configuration
@@ -47,7 +48,7 @@ class DESRESDataModule(LightningDataModule):
         )
 
     def train_dataloader(self):
-        DataLoader(
+        return DataLoader(
             self.dataset,
             batch_size=self.args.batch_size,
             shuffle=True,
@@ -82,9 +83,11 @@ class DESRESDataset(Dataset):
         self.length = self._load_length()
         self.z_table = self._load_z_table()
         self.cutoff = cutoff_ang
-        logger.info(
-            f"Loaded {self.protein_id}-{self.traj_id} | lagtime {self.lagtime_ns} ns | cutoff {self.cutoff} angs"
-        )
+        if torch.distributed.is_initialized():
+            if torch.distributed.get_rank() == 0:
+                logger.info(
+                    f"Loaded {self.protein_id}-{self.traj_id} | lagtime {self.lagtime_ns} ns | cutoff {self.cutoff} angs"
+                )
 
     def _load_length(self):
         item_key = "__len__".encode()

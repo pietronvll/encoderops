@@ -1,17 +1,13 @@
 from dataclasses import asdict
-from typing import List
 
 import lightning
 import numpy as np
 import torch
 from linear_operator_learning.nn import SimNorm
-from linear_operator_learning.nn.stats import covariance
 from loguru import logger
-from mlcolvar.core.nn.graph.schnet import SchNetModel
 from torch.nn.utils.parametrizations import spectral_norm
 from torch.optim import Adam
 from torch.optim.lr_scheduler import CosineAnnealingLR
-from torch_geometric.data import Batch
 
 from src.configs import TrainerArgs
 from src.loss import RegSpectralLoss
@@ -32,7 +28,7 @@ class EvolutionOperator(lightning.LightningModule):
         self.save_hyperparameters()
         self.automatic_optimization = False
 
-        encoder = encoder_cls(**encoder_args)
+        self.encoder = encoder_cls(**encoder_args)
         batch_norm = torch.nn.BatchNorm1d(
             num_features=self.trainer_args.latent_dim, affine=False
         )
@@ -42,12 +38,12 @@ class EvolutionOperator(lightning.LightningModule):
         if trainer_args.normalize_latents == "simnorm":
             assert trainer_args.simnorm_dim > 0
             simnorm = SimNorm(dim=trainer_args.simnorm_dim)
-            self.encoder = torch.nn.Sequential(encoder, batch_norm, simnorm)
+            self.normalizer = torch.nn.Sequential(batch_norm, simnorm)
         elif trainer_args.normalize_latents == "euclidean":
             euclidnorm = EuclideanNorm()
-            self.encoder = torch.nn.Sequential(encoder, batch_norm, euclidnorm)
+            self.normalizer = torch.nn.Sequential(batch_norm, euclidnorm)
         else:  # None
-            self.encoder = torch.nn.Sequential(encoder, batch_norm)
+            self.normalizer = torch.nn.Sequential(batch_norm)
 
         self.linear = torch.nn.Linear(
             trainer_args.latent_dim, trainer_args.latent_dim, bias=False
@@ -58,8 +54,12 @@ class EvolutionOperator(lightning.LightningModule):
             self.linear = spectral_norm(self.linear)
         self.loss = RegSpectralLoss(reg=trainer_args.regularization)
 
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.forward_nn(x)
+
     def forward_nn(self, x: torch.Tensor, lagged: bool = False) -> torch.Tensor:
         x = self.encoder(x)
+        x = self.normalizer(x)
         if lagged:
             x = self.linear(x)
         return x
@@ -81,9 +81,9 @@ class EvolutionOperator(lightning.LightningModule):
         return transfer_operator
 
     def training_step(self, train_batch, batch_idx):
-        # forward
-        f_t = self.forward_nn(train_batch)
-        f_lag = self.forward_nn(train_batch, lagged=True)
+        x_t, x_lag = self.encoder.prepare_batch(train_batch)
+        f_t = self.forward_nn(x_t)
+        f_lag = self.forward_nn(x_lag, lagged=True)
         # opt
         # opt:zero_grad
         for opt in self.optimizers():
@@ -132,7 +132,7 @@ class EvolutionOperator(lightning.LightningModule):
             "step": self._global_step,
             "train_loss": -loss,
             "train_loss_noreg": -loss_noreg,
-            "rank": effective_rank(torch.linalg.eigvalsh(self.cov)),
+            "rank": effective_rank(torch.linalg.eigvalsh(self.covariances.cov_X)),
             "sigma_1": svals[-1].item(),
             "sigma_2": svals[-2].item(),
             "tau_1_ns": timescales[0],
@@ -185,294 +185,3 @@ class EvolutionOperator(lightning.LightningModule):
             configuration[0]["lr_scheduler"] = scheduler
 
         return configuration
-
-    @staticmethod
-    def _setup_graph_data(train_batch, key: str = "item"):
-        data = train_batch[key]
-        data["positions"].requires_grad_(True)
-        data["node_attrs"].requires_grad_(True)
-        return data
-
-
-class MultiTaskOperator(lightning.LightningModule):
-    def __init__(
-        self,
-        cutoff: float,
-        atomic_numbers: List[int],
-        model_args: ModelArgs,
-        data_args: list[DataArgs],
-    ):
-        super().__init__()
-        self.save_hyperparameters()
-
-        self.automatic_optimization = False
-        self.model_args = model_args
-        self.data_args = data_args
-        self.num_systems = len(data_args)
-        self.system_names = [data_args[i].protein_id for i in range(self.num_systems)]
-
-        encoder = SchNetModel(
-            n_out=model_args.latent_dim,
-            cutoff=cutoff,
-            atomic_numbers=atomic_numbers,
-            n_bases=model_args.n_bases,
-            n_layers=model_args.n_layers,
-            n_filters=model_args.n_filters,
-            n_hidden_channels=model_args.n_hidden_channels,
-        )
-
-        batch_norm = torch.nn.BatchNorm1d(
-            num_features=model_args.latent_dim, affine=False
-        )
-
-        if model_args.simnorm_dim > 0:
-            simnorm = SimNorm(dim=model_args.simnorm_dim)
-            self.encoder = torch.nn.Sequential(encoder, batch_norm, simnorm)
-        else:
-            self.encoder = torch.nn.Sequential(encoder, batch_norm)
-
-        # Register buffers for covariance and cross-covariance matrices
-        for system_id in range(self.num_systems):
-            self.register_buffer(
-                f"f_mean_{system_id}", torch.ones(model_args.latent_dim)
-            )
-            self.register_buffer(f"cov_{system_id}", torch.eye(model_args.latent_dim))
-            self.register_buffer(
-                f"cross_cov_{system_id}", torch.eye(model_args.latent_dim)
-            )
-
-        if self.model_args.normalize_lin:
-            self.linear = torch.nn.ModuleDict(
-                {
-                    f"linear_{system_id}": spectral_norm(
-                        torch.nn.Linear(
-                            model_args.latent_dim, model_args.latent_dim, bias=False
-                        )
-                    )
-                    for system_id in range(self.num_systems)
-                }
-            )
-        else:
-            self.linear = torch.nn.ModuleDict(
-                {
-                    f"linear_{system_id}": torch.nn.Linear(
-                        model_args.latent_dim, model_args.latent_dim, bias=False
-                    )
-                    for system_id in range(self.num_systems)
-                }
-            )
-        self._global_step = 0
-        self._samples = 0
-        self.loss = RegSpectralLoss(reg=model_args.regularization)
-
-    def forward_nn(
-        self, x: torch.Tensor, system_id: int, lagged: bool = False
-    ) -> torch.Tensor:
-        x = self.encoder(x)
-        if lagged:
-            x = self.linear[f"linear_{system_id}"](x)
-        return x
-
-    def get_buffers(self, system_id: int):
-        cov = self.get_buffer(f"cov_{system_id}")
-        cross_cov = self.get_buffer(f"cross_cov_{system_id}")
-        f_mean = self.get_buffer(f"f_mean_{system_id}")
-        return cov, cross_cov, f_mean
-
-    @torch.no_grad()
-    def get_timescales(self, system_id: int):
-        """
-        Create a Wandb scatter plot of the eigenvalues of the transfer operator as currently estimated by self.cov and self.cross_cov
-        """
-        transfer_operator = self.get_transfer_operator(system_id)
-        operator_eigs = torch.linalg.eigvals(transfer_operator).numpy(force=True)
-        lagtime_ns = self.trainer.train_dataloader.dataset.datasets[
-            system_id
-        ].lagtime_ns
-        timescales = np.sort((1 / -np.log(np.abs(operator_eigs))) * lagtime_ns)[::-1]
-        return timescales
-
-    @torch.no_grad()
-    def get_transfer_operator(self, system_id: int, reg: float = 1e-4):
-        cov, cross_cov, _ = self.get_buffers(system_id)
-        reg_cov = (
-            reg
-            * torch.eye(self.model_args.latent_dim, dtype=cov.dtype, device=cov.device)
-            + cov
-        )
-        transfer_operator = torch.linalg.solve(reg_cov, cross_cov)
-        return transfer_operator
-
-    @torch.no_grad()
-    def update_covariances(self, f_t, f_lag_nolin, system_id, alpha: float = 0.99):
-        cov, cross_cov, f_mean = self.get_buffers(system_id)
-        # Updating the mean
-        mean_new = f_t.mean(dim=0)
-        if self.trainer.world_size > 1:
-            torch.distributed.all_reduce(mean_new, op=torch.distributed.ReduceOp.SUM)
-            mean_new = mean_new / self.trainer.world_size
-        if self._global_step == 0:
-            if self.global_rank == 0:
-                logger.info("Initialized Mean Buffer")
-            f_mean = f_mean.copy_(mean_new)
-        else:
-            self._inplace_EMA(mean_new, f_mean, alpha)
-        # Updating the covariance
-        cov_new = covariance(f_t - f_mean.view(1, -1), center=False)
-        cross_cov_new = covariance(
-            f_t - f_mean.view(1, -1),
-            f_lag_nolin - f_mean.view(1, -1),
-            center=False,
-        )
-        # Gather values from all processes
-        if self.trainer.world_size > 1:
-            # Use all_reduce with AVG operation to average across all devices
-            torch.distributed.all_reduce(cov_new, op=torch.distributed.ReduceOp.SUM)
-            torch.distributed.all_reduce(
-                cross_cov_new, op=torch.distributed.ReduceOp.SUM
-            )
-            # Normalize by world_size since we summed across devices
-            cov_new = cov_new / self.trainer.world_size
-            cross_cov_new = cross_cov_new / self.trainer.world_size
-        if self._global_step == 0:
-            if self.global_rank == 0:
-                logger.info("Initialized Covariance Buffer")
-            cov = cov.copy_(cov_new)
-            cross_cov = cross_cov.copy_(cross_cov_new)
-        else:
-            self._inplace_EMA(cov_new, cov, alpha)
-            self._inplace_EMA(cross_cov_new, cross_cov, alpha)
-
-    def _inplace_EMA(self, update, source_ref, alpha=0.99):
-        source_ref.mul_(alpha)
-        source_ref.add_(update, alpha=1 - alpha)
-
-    def split_batch(self, train_batch):
-        batch, system_ids = train_batch
-        system_batches = {}
-        for system_id in range(self.num_systems):
-            mask = system_ids == system_id
-            mini_batch = {}
-            for key in ["item", "item_lag"]:
-                mini_batch[key] = Batch.from_data_list(batch[key][mask])
-            system_batches[system_id] = mini_batch
-        return system_batches
-
-    def training_step(self, train_batch, batch_idx):
-        # data
-        system_batches = self.split_batch(train_batch)
-        f_t = []
-        f_lag = []
-        log_dict = {}
-        for system_id, batch in system_batches.items():
-            x_t = self._setup_graph_data(batch)
-            x_lag = self._setup_graph_data(batch, key="item_lag")
-            if x_t.num_graphs == 1:
-                continue  # Otherwise batch_norm will fail
-            # forward
-            f_t_system = self.forward_nn(x_t, system_id)
-            f_lag_system = self.forward_nn(x_lag, system_id, lagged=True)
-            f_lag_nolin = self.forward_nn(x_lag, system_id, lagged=False)
-            self.update_covariances(f_t_system, f_lag_nolin, system_id)
-            f_t.append(f_t_system)
-            f_lag.append(f_lag_system)
-            # Logging:
-            with torch.no_grad():
-                timescales = self.get_timescales(system_id)
-                cov, _, _ = self.get_buffers(system_id)
-                eff_rank = effective_rank(torch.linalg.eigvalsh(cov))
-                log_dict[f"{self.system_names[system_id]} rank"] = eff_rank
-                log_dict[f"{self.system_names[system_id]} tau_1_ns"] = timescales[0]
-                log_dict[f"{self.system_names[system_id]} tau_2_ns"] = timescales[1]
-
-        f_t, f_lag = torch.cat(f_t), torch.cat(f_lag)
-        # opt
-        # opt:zero_grad
-        for opt in self.optimizers():
-            opt.zero_grad()
-        # opt:loss
-        loss = self.loss(f_t, f_lag)
-        # opt:backard
-        self.manual_backward(loss)
-        # opt:grad_clip
-        if self.model_args.max_grad_norm is not None:
-            torch.nn.utils.clip_grad_norm_(
-                self.encoder.parameters(), max_norm=self.model_args.max_grad_norm
-            )
-        # opt:step
-        for opt in self.optimizers():
-            opt.step()
-
-        # opt:scheduler_step
-        if self.model_args.min_encoder_lr is not None:
-            sch = self.lr_schedulers()
-            if self.trainer.is_last_batch:
-                sch.step()
-            self.log(
-                "learning_rate",
-                sch.get_last_lr()[0],
-                on_step=True,
-                on_epoch=False,
-                prog_bar=False,
-                batch_size=f_t.shape[0],
-            )
-
-        # log
-        self._global_step += 1
-        self._samples += f_t.shape[0]
-        log_dict["samples"] = self._samples * self.trainer.world_size
-        log_dict["step"] = self._global_step
-        log_dict["train_loss"] = -loss
-        self.log_dict(
-            log_dict,
-            on_step=True,
-            on_epoch=False,
-            sync_dist=False,
-            prog_bar=True,
-            batch_size=f_t.shape[0],
-        )
-        return loss
-
-    def on_train_start(self):
-        if self.global_rank == 0:
-            logger.info(f"Checkpoints at {self.trainer.checkpoint_callback.dirpath}")
-            for k, v in asdict(self.model_args).items():
-                if k not in self.logger.experiment.config.keys():
-                    self.logger.experiment.config[k] = v
-
-    def configure_optimizers(self):
-        """
-        Initialize the optimizer based on self._optimizer_name and self.optimizer_kwargs.
-        """
-
-        encoder_opt = Adam(
-            self.encoder.parameters(),
-            lr=self.model_args.encoder_lr,
-        )
-        linear_opt = Adam(self.linear.parameters(), lr=self.model_args.linear_lr)
-
-        configuration = (
-            {
-                "optimizer": encoder_opt,
-            },
-            {
-                "optimizer": linear_opt,
-            },
-        )
-
-        if self.model_args.min_encoder_lr is not None:
-            scheduler = CosineAnnealingLR(
-                encoder_opt,
-                T_max=self.model_args.epochs,
-                eta_min=self.model_args.min_encoder_lr,  # Minimum learning rate
-            )
-            configuration[0]["lr_scheduler"] = scheduler
-
-        return configuration
-
-    @staticmethod
-    def _setup_graph_data(train_batch, key: str = "item"):
-        data = train_batch[key]
-        data["positions"].requires_grad_(True)
-        data["node_attrs"].requires_grad_(True)
-        return data
