@@ -1,9 +1,9 @@
 import json
 import os
 import pickle
+from dataclasses import asdict
 from pathlib import Path
 from typing import Literal
-from dataclasses import asdict
 
 import mdtraj
 import torch.distributed
@@ -53,12 +53,9 @@ class DESRESDataModule(LightningDataModule):
         )
 
     def state_dict(self):
-        state = {
-            "data_args": asdict(self.data_args),
-            "num_workers": self.num_workers
-        }
+        state = {"data_args": asdict(self.data_args), "num_workers": self.num_workers}
         return state
-    
+
     def load_state_dict(self, state):
         self.data_args = DESRESDataArgs(**state["data_args"])
         self.num_workers = state["num_workers"]
@@ -293,13 +290,13 @@ class Lorenz63DataModule(LightningDataModule):
         self.num_workers = num_workers
 
     def prepare_data(self):
-        if not (self.data_path / "lorenz63_dataset.nc").exists():
+        if not (self.data_path / "lorenz63/lorenz63_dataset.nc").exists():
             logger.info("Downloading Lorenz63 dataset")
             import huggingface_hub as hf
 
             hf.hf_hub_download(
                 repo_id="pnovelli/encoderops",
-                filename="lorenz63_dataset.nc",
+                filename="lorenz63/lorenz63_dataset.nc",
                 repo_type="dataset",
                 local_dir=self.data_path,
             )
@@ -317,6 +314,12 @@ class Lorenz63DataModule(LightningDataModule):
             data_path=self.data_path,
             split="val",
         )
+        self.test_dataset = Lorenz63Dataset(
+            lagtime=self.data_args.lagtime,
+            history_len=self.data_args.history_len,
+            data_path=self.data_path,
+            split="test",
+        )
 
     def train_dataloader(self):
         return DataLoader(
@@ -333,6 +336,14 @@ class Lorenz63DataModule(LightningDataModule):
             shuffle=False,
             num_workers=self.num_workers,
         )
+    
+    def test_dataloader(self):
+        return DataLoader(
+            self.test_dataloader,
+            batch_size=self.args.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+        )
 
 
 class Lorenz63Dataset(Dataset):
@@ -341,7 +352,7 @@ class Lorenz63Dataset(Dataset):
         lagtime: int = 1,
         history_len: int = 0,
         data_path: str | Path | None = None,
-        split: Literal["train", "val"] = "train",
+        split: Literal["train", "val", "test"] = "train",
     ):
         # If data_path is not specified, read it from the environment variable "DATA_PATH"
         self.lagtime = lagtime
