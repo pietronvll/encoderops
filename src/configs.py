@@ -4,25 +4,40 @@ from typing import Literal
 
 @dataclass
 class TrainerArgs:
-    latent_dim: int
-    encoder_lr: float
-    linear_lr: float
-    epochs: int
-    batch_size: int
+    latent_dim: int 
+    "Dimension of the latent space"
+    encoder_lr: float 
+    "Learning rate for the encoder"
+    linear_lr: float 
+    "Learning rate for the linear (transfer operator) layer"
+    epochs: int 
+    "Number of training epochs"
+    batch_size: int 
+    "Batch size for training"
     max_grad_norm: float | None
-    normalize_lin: bool
-    regularization: float
+    "Maximum gradient norm for gradient clipping. If None, no clipping is performed"
+    normalize_lin: bool 
+    "Whether to apply spectral normalization to the linear layer"
+    regularization: float 
+    "Regularization strength for the spectral loss"
     min_encoder_lr: float | None = None
+    "Minimum learning rate for the encoder, used in cosine annealing scheduler. If None, no scheduler is used"
     normalize_latents: Literal["simnorm", "euclidean"] | None = "simnorm"
+    "Normalization method for the latent space. Can be 'simnorm', 'euclidean', or None"
     simnorm_dim: int = 4
+    "Dimension for the SimNorm normalization, if used"
 
 
 @dataclass
 class SchNetModelArgs:
     n_bases: int = 16
+    "Number of radial basis functions"
     n_layers: int = 3
+    "Number of interaction layers"
     n_filters: int = 32
-    n_hidden_channels: int = 64
+    "Number of filters in the interaction layers"
+    n_hidden_channels: int = 64 
+    "Number of hidden channels in the interaction layers"
 
 
 @dataclass
