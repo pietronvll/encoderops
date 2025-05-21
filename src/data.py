@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Literal
 
 import mdtraj
+import numpy as np
 import torch.distributed
 import xarray as xr
 from lightning import LightningDataModule
@@ -25,6 +26,7 @@ from src.configs import (
     CalixareneDataArgs,
     DESRESDataArgs,
     Lorenz63DataArgs,
+    SSTDataArgs,
     TrainerArgs,
 )
 
@@ -445,6 +447,292 @@ class Lorenz63DataModule(LightningDataModule):
             shuffle=False,
             num_workers=self.num_workers,
         )
+
+
+class SSTDataModule(LightningDataModule):
+    def __init__(
+        self,
+        args: TrainerArgs,
+        data_args: SSTDataArgs,
+        num_workers: int,
+    ):
+        super().__init__()
+        self.args = args
+        self.data_args = data_args
+        self.data_path = self.parse_datapath(
+            self.data_args.data_path
+        )  # Preprocessed offline for the moment. Maybe move to prepare_data if asked to.
+        self.num_workers = num_workers
+
+    def parse_datapath(self, data_path):
+        if data_path is None:
+            data_path = Path(os.environ["DATA_PATH"])
+        else:
+            data_path = Path(data_path)
+        return data_path  # Preprocessed offline for the moment. Maybe move to prepare_data if asked to.
+
+    def prepare_data(self):
+        if not (self.data_path / "SST/sst_monthly.nc").exists():
+            logger.info("Downloading Temperature dataset")
+            import huggingface_hub as hf
+
+            hf.hf_hub_download(
+                repo_id="pnovelli/encoderops",
+                filename="SST/sst_monthly.nc",
+                repo_type="dataset",
+                local_dir=self.data_path,
+            )
+
+    def state_dict(self):
+        state = {"data_args": asdict(self.data_args), "num_workers": self.num_workers}
+        return state
+
+    def load_state_dict(self, state):
+        self.data_args = Lorenz63DataArgs(**state["data_args"])
+        self.num_workers = state["num_workers"]
+        self.data_path = self.parse_datapath(self.data_args.data_path)
+
+    def setup(self, stage):
+        self.train_dataset = SSTDataset(
+            lagtime=self.data_args.lagtime,
+            history_len=self.data_args.history_len,
+            data_path=self.data_path,
+            split="train",
+        )
+        self.val_dataset = SSTDataset(
+            lagtime=self.data_args.lagtime,
+            history_len=self.data_args.history_len,
+            data_path=self.data_path,
+            split="val",
+        )
+
+    def train_dataloader(self):
+        return DataLoader(
+            self.train_dataset,
+            batch_size=self.args.batch_size,
+            shuffle=True,
+            num_workers=self.num_workers,
+        )
+
+    def val_dataloader(self):
+        return DataLoader(
+            self.val_dataset,
+            batch_size=self.args.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+        )
+
+
+class SSTDataset(Dataset):
+    def __init__(
+        self,
+        lagtime: int = 1,
+        history_len: int = 0,
+        data_path: str | Path | None = None,
+        split: Literal["train", "val"] = "train",
+    ):
+        # If data_path is not specified, read it from the environment variable "DATA_PATH"
+        self.lagtime = lagtime
+        self.history_len = history_len
+        self.split = split
+
+        if data_path is None:
+            try:
+                data_path = os.environ["DATA_PATH"]
+            except KeyError:
+                raise ValueError(
+                    "data_path environment variable is not set, and data_path is not provided."
+                )
+
+        dataset_path = Path(data_path) / "SST/sst_monthly.nc"
+        ds = xr.open_dataset(dataset_path)
+        ds = self._compute_oni(
+            ds,
+            method="fixed",
+            output="anomalies",
+            latitude_range=(180.0, -180.0),
+            longitude_range=(0.0, 360.0),
+        )
+        oni = self._compute_oni(ds, method="fixed")
+        oni_full = self._compute_oni(
+            ds,
+            method="fixed",
+            output="oni",
+            latitude_range=(180.0, -180.0),
+            longitude_range=(0.0, 360.0),
+        )
+        split_years = {"train": list(range(1979, 2017)), "val": list(range(2017, 2024))}
+        time_mask = ds.time.dt.year.isin(split_years[split])
+        self.ds = ds.sel(time=time_mask)
+        self.oni = oni.sel(time=time_mask)
+        self.oni_full = oni_full.sel(time=time_mask)
+        self.data = np.squeeze(self.ds.__xarray_dataarray_variable__.values)
+        self.time = self.ds.time.values
+        if torch.distributed.is_initialized():
+            if torch.distributed.get_rank() == 0:
+                logger.info(f"Dataset loaded with {self.num_samples} samples.")
+        else:
+            logger.info(f"Dataset loaded with {self.num_samples} samples.")
+
+    def __len__(self):
+        return self.num_samples
+
+    @property
+    def num_samples(self):
+        return len(self.ds.time) - self.history_len - self.lagtime
+
+    def _compute_oni(
+        self,
+        sst_ds: xr.DataArray,
+        method: str = "fixed",
+        output: str = "oni",
+        fixed_base_period: tuple = ("1991-01-01", "2020-12-31"),
+        centered_periods: list | None = None,
+        latitude_range: tuple[float, float] | None = None,
+        longitude_range: tuple[float, float] | None = None,
+    ) -> xr.DataArray:
+        """
+        Compute ONI index or SST anomalies based on a given method.
+
+        Parameters:
+        ----------
+        method : str
+            'fixed' for a fixed 30-year base period, 'centered' for moving base periods.
+        output : str
+            'oni' for ONI (with 3-month running mean), 'anomalies' for raw anomalies.
+        fixed_base_period : tuple
+            Start and end date of the fixed base period (only if method='fixed').
+        centered_periods : list
+            List of tuples for (5-year block start, 5-year block end, base period string).
+        latitude_range : tuple
+            Latitude range to average over (default Niño 3.4: (5, -5)).
+        longitude_range : tuple
+            Longitude range to average over (default Niño 3.4: (190, 240)).
+
+        Returns:
+        -------
+        xr.DataArray
+            ONI index (with rolling mean) or SST anomalies time series.
+        """
+
+        if latitude_range is None:
+            latitude_range = (5, -5)
+        if longitude_range is None:
+            longitude_range = (190, 240)
+
+        # Step 0: Prepare
+        sst_region = sst_ds.sel(
+            latitude=slice(*latitude_range), longitude=slice(*longitude_range)
+        )
+
+        # Latitude weights for area mean
+        weights = np.cos(np.deg2rad(sst_region.latitude))
+        weights.name = "weights"
+
+        # Fixed climatology method
+        if method == "fixed":
+            base_start, base_end = fixed_base_period
+
+            # Select base period
+            sst_base = sst_region.sel(time=slice(base_start, base_end))
+            climatology = sst_base.groupby("time.month").mean("time")
+
+            # Compute anomalies
+            anomalies = sst_region.groupby("time.month") - climatology
+
+        # Centered climatology method
+        elif method == "centered":
+            if centered_periods is None:
+                centered_periods = [
+                    (1979, 1983, "1964-1993"),
+                    (1984, 1988, "1969-1998"),
+                    (1989, 1993, "1974-2003"),
+                    (1994, 1998, "1979-2008"),
+                    (1999, 2003, "1984-2013"),
+                    (2004, 2008, "1989-2018"),
+                    (2009, 2013, "1994-2023"),
+                    (2014, 2018, "1999-2028"),  # Note: beyond your data, careful here
+                    (2019, 2023, "2004-2033"),  # Note: beyond your data
+                ]
+
+            anomalies_list = []
+
+            for start_year, end_year, base_period in centered_periods:
+                base_start, base_end = base_period.split("-")
+
+                # Select base climatology
+                sst_base = sst_region.sel(
+                    time=slice(f"{base_start}-01-01", f"{base_end}-12-31")
+                )
+                climatology = sst_base.groupby("time.month").mean("time")
+
+                # Select block data
+                sst_block = sst_region.sel(
+                    time=slice(f"{start_year}-01-01", f"{end_year}-12-31")
+                )
+
+                # Compute anomalies
+                anomalies_block = sst_block.groupby("time.month") - climatology
+
+                anomalies_list.append(anomalies_block)
+
+            anomalies = xr.concat(anomalies_list, dim="time")
+
+        else:
+            raise ValueError("Method must be 'fixed' or 'centered'.")
+
+        # Step 4: Return output
+        if output == "anomalies":
+            anomalies = anomalies.drop_vars("month")
+            return anomalies
+        elif output == "oni":
+            # Spatial mean (area weighted)
+            anomaly_mean = anomalies.weighted(weights).mean(
+                dim=["latitude", "longitude"]
+            )
+            oni = anomaly_mean.rolling(time=3, center=True, min_periods=1).mean()
+            return oni
+        else:
+            raise ValueError("Output must be 'oni' or 'anomalies'.")
+
+    def _load_sample(self, idx: int):
+        x_selectors = [idx - h + self.history_len for h in range(self.history_len + 1)]
+        y_selectors = [x_id + self.lagtime for x_id in x_selectors]
+        x = self.data[x_selectors]
+        y = self.data[y_selectors]
+
+        x = torch.from_numpy(x).float()
+        y = torch.from_numpy(y).float()
+
+        times = self.time[x_selectors]
+        times_lag = self.time[y_selectors]
+
+        return (
+            x,
+            y,
+            times,
+            times_lag,
+        )
+
+    def __getitem__(self, idx):
+        if isinstance(idx, slice):
+            raise NotImplementedError
+        elif isinstance(idx, (list, tuple)):
+            raise NotImplementedError
+
+        if idx < 0:
+            idx = len(self) + idx
+
+        if idx >= len(self):
+            raise IndexError("Index out of range")
+
+        x, y, t, t_lag = self._load_sample(idx)
+        return {
+            "x": x,
+            "y": y,
+            "time": [str(t_i) for t_i in t],
+            "time_lag": [str(t_i) for t_i in t_lag],
+        }
 
 
 class Lorenz63Dataset(Dataset):

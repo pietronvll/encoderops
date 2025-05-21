@@ -1,7 +1,21 @@
 import torch
 import torch.distributed
 from linear_operator_learning.nn import MLP as lolMLP
+from linear_operator_learning.nn import resnet18
 from mlcolvar.core.nn.graph.schnet import SchNetModel
+
+
+class ResNet18(torch.nn.Module):
+    def __init__(self, **model_args):
+        super().__init__()
+        self.model = resnet18(**model_args)
+
+    def forward(self, data):
+        return self.model(data)
+
+    def prepare_batch(self, train_batch):
+        x, y = train_batch["x"], train_batch["y"]
+        return x, y
 
 
 class MLP(torch.nn.Module):

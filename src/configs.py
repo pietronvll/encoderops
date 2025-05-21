@@ -21,7 +21,7 @@ class TrainerArgs:
     regularization: float
     "Regularization strength for the spectral loss"
     min_encoder_lr: float | None = None
-    "Minimum learning rate for the encoder, used in cosine annealing scheduler. If None, no scheduler is used"
+    "Minimum learning rate for the encoder, used in cosine annealing scheduler. If None, no scheduler is used."
     normalize_latents: Literal["simnorm", "euclidean"] | None = "simnorm"
     "Normalization method for the latent space. Can be 'simnorm', 'euclidean', or None"
     simnorm_dim: int = 4
@@ -46,6 +46,12 @@ class MLPModelArgs:
     "Number of hidden layers"
     layer_size: int = 16
     "Size of each hidden layer"
+
+
+@dataclass
+class ResNet18ModelArgs:
+    padding_mode: str = "circular"
+    "Padding mode"
 
 
 @dataclass
@@ -91,10 +97,20 @@ class Lorenz63DataArgs:
 
 
 @dataclass
+class SSTDataArgs:
+    lagtime: int = 1
+    "Lagtime (in number of months) used to generate lagged data"
+    history_len: int = 0
+    "Number of frames to use as history"
+    data_path: str | None = None
+    "Path to the data file. If None, tries to read the 'DATA_PATH' environment variable"
+
+
+@dataclass
 class Configs:
     trainer_args: TrainerArgs
-    model_args: SchNetModelArgs | MLPModelArgs
-    data_args: DESRESDataArgs | Lorenz63DataArgs | CalixareneDataArgs
+    model_args: SchNetModelArgs | MLPModelArgs | ResNet18ModelArgs
+    data_args: DESRESDataArgs | Lorenz63DataArgs | CalixareneDataArgs | SSTDataArgs
     wandb_project: str
     wandb_entity: str | None = None
     offline: bool = False
@@ -183,6 +199,26 @@ defaults = {
             model_args=SchNetModelArgs(),
             data_args=CalixareneDataArgs(molecule_ids=("G1", "G3"), lagtime=500),
             wandb_project="encoderops-calixarene-G1+3",
+        ),
+    ),
+    "ENSO": (
+        "Enso Modes",
+        Configs(
+            trainer_args=TrainerArgs(
+                latent_dim=64,
+                encoder_lr=1e-5,
+                linear_lr=1e-2,
+                epochs=200,
+                batch_size=32,
+                max_grad_norm=None,
+                normalize_lin=True,
+                regularization=1e-5,
+                normalize_latents="euclidean",
+            ),
+            model_args=ResNet18ModelArgs(),
+            data_args=SSTDataArgs(),
+            wandb_project="encoderops-ENSO",
+            num_devices=1,
         ),
     ),
 }
