@@ -418,9 +418,17 @@ class MultiTaskOperator(lightning.LightningModule):
         for system_id in range(self.num_systems):
             mask = system_ids == system_id
             mini_batch = {}
+            _found_zero = False
             for key in ["item", "item_lag"]:
-                mini_batch[key] = Batch.from_data_list(batch[key][mask])
-            system_batches[system_id] = mini_batch
+                system_data = batch[key][mask]
+                if len(system_data) == 0:
+                    _found_zero = True
+                else:
+                    mini_batch[key] = Batch.from_data_list(batch[key][mask])
+            if not _found_zero:
+                system_batches[system_id] = mini_batch
+            else:
+                system_batches[system_id] = None
         return system_batches
 
     def training_step(self, train_batch, batch_idx):
@@ -430,9 +438,11 @@ class MultiTaskOperator(lightning.LightningModule):
         f_lag = []
         log_dict = {}
         for system_id, batch in system_batches.items():
+            if batch is None:
+                continue
             x_t = self._setup_graph_data(batch)
             x_lag = self._setup_graph_data(batch, key="item_lag")
-            if x_t.num_graphs == 1:
+            if x_t.num_graphs <= 1:
                 continue  # Otherwise batch_norm will fail
             # forward
             f_t_system = self.forward_nn(x_t, system_id)
@@ -449,7 +459,8 @@ class MultiTaskOperator(lightning.LightningModule):
                 log_dict[f"{self.system_names[system_id]} rank"] = eff_rank
                 log_dict[f"{self.system_names[system_id]} tau_1_ns"] = timescales[0]
                 log_dict[f"{self.system_names[system_id]} tau_2_ns"] = timescales[1]
-
+        if len(f_t) == 0 or len(f_lag) == 0:
+            return torch.tensor(0.0)
         f_t, f_lag = torch.cat(f_t), torch.cat(f_lag)
         # opt
         # opt:zero_grad

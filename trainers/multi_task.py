@@ -42,6 +42,7 @@ def main(config: MultiTaskConfig):
         batch_size=config.batch_size,
         shuffle=True,
         num_workers=config.dataloader_workers,
+        drop_last=True,
     )
 
     # Model Init

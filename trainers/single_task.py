@@ -52,6 +52,8 @@ def main(config: Config | MultiTaskConfig):
         z_table = AtomicNumberTable(atomic_numbers)
         for ds in datasets:
             ds.z_table = z_table
+            for ds_nested in ds.datasets:
+                ds_nested.z_table = z_table
         dataset.z_table = z_table
         dataset.protein_id = "-".join([ds.protein_id for ds in datasets])
     else:
