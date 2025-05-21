@@ -10,17 +10,36 @@ import torch.distributed
 import xarray as xr
 from lightning import LightningDataModule
 from loguru import logger
+from mlcolvar.data.graph.atomic import AtomicNumberTable
 from mlcolvar.data.graph.utils import _create_dataset_from_configuration
 from mlcolvar.utils.io import (
     _configures_from_trajectory,
     _names_from_top,
     _z_table_from_top,
 )
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import ConcatDataset, DataLoader, Dataset
 from torch_geometric.loader import DataLoader as PyGDataLoader
 
 import lmdb
-from src.configs import DESRESDataArgs, Lorenz63DataArgs, TrainerArgs
+from src.configs import (
+    CalixareneDataArgs,
+    DESRESDataArgs,
+    Lorenz63DataArgs,
+    TrainerArgs,
+)
+
+
+def traj_to_confs(traj: mdtraj.Trajectory, system_selection: str | None = None):
+    configs = _configures_from_trajectory(traj, system_selection=system_selection)
+    z_table = _z_table_from_top([traj.top])
+    atom_names = _names_from_top([traj.top])
+    return configs, z_table, atom_names
+
+
+def mdtraj_load(trajectory_files: list[str], top: str, stride: int = 1000):
+    traj = mdtraj.load(trajectory_files, top=top, stride=stride)
+    traj.top = mdtraj.core.trajectory.load_topology(top)
+    return traj
 
 
 class DESRESDataModule(LightningDataModule):
@@ -179,51 +198,122 @@ class DESRESDataset(Dataset):
         return result_dict
 
 
-def traj_to_confs(traj: mdtraj.Trajectory, system_selection: str | None = None):
-    configs = _configures_from_trajectory(traj, system_selection=system_selection)
-    z_table = _z_table_from_top([traj.top])
-    atom_names = _names_from_top([traj.top])
-    return configs, z_table, atom_names
+class CalixareneDataModule(LightningDataModule):
+    def __init__(
+        self,
+        args: TrainerArgs,
+        data_args: CalixareneDataArgs,
+        num_workers: int,
+    ):
+        super().__init__()
+        self.args = args
+        self.data_args = data_args
+        self.data_path = self.parse_datapath(self.data_args.data_path)
+        self.num_workers = num_workers
 
+    def parse_datapath(self, data_path):
+        if data_path is None:
+            data_path = Path(os.environ["DATA_PATH"])
+        else:
+            data_path = Path(data_path)
+        return data_path  # Preprocessed offline for the moment. Maybe move to prepare_data if asked to.
 
-def mdtraj_load(trajectory_files: list[str], top: str, stride: int = 1000):
-    traj = mdtraj.load(trajectory_files, top=top, stride=stride)
-    traj.top = mdtraj.core.trajectory.load_topology(top)
-    return traj
+    def prepare_data(self):
+        if not (self.data_path / "calixarene").exists():
+            logger.info("Downloading Calixarene dataset")
+            import huggingface_hub as hf
+
+            hf.snapshot_download(
+                repo_id="pnovelli/encoderops",
+                allow_patterns="calixarene/**",
+                repo_type="dataset",
+                local_dir=self.data_path,
+            )
+
+    def setup(self, stage):
+        datasets = []
+        atomic_numbers = []
+        for molecule_id in self.data_args.molecule_ids:
+            for traj_id in self.data_args.traj_ids:
+                ds = CalixareneDataset(
+                    molecule_id=molecule_id,
+                    data_path=self.data_path,
+                    traj_id=traj_id,
+                    lagtime=self.data_args.lagtime,
+                    cutoff_ang=self.data_args.cutoff_ang,
+                    keep_mdtraj=self.data_args.keep_mdtraj,
+                )
+                datasets.append(ds)
+                atomic_numbers.extend(ds.z_table.zs)
+        atomic_numbers = sorted(list(set(atomic_numbers)))
+        z_table = AtomicNumberTable(atomic_numbers)
+        molecule_ids = "-".join(self.data_args.molecule_ids)
+        for ds in datasets:
+            ds.z_table = z_table
+        self.dataset = ConcatDataset(datasets)
+        self.dataset.lagtime = self.data_args.lagtime
+        self.dataset.lagtime_ns = self.dataset.datasets[0].lagtime_ns
+        self.dataset.z_table = z_table
+        self.dataset.molecule_ids = molecule_ids
+
+    def state_dict(self):
+        state = {"data_args": asdict(self.data_args), "num_workers": self.num_workers}
+        return state
+
+    def load_state_dict(self, state):
+        self.data_args = CalixareneDataArgs(**state["data_args"])
+        self.num_workers = state["num_workers"]
+        self.data_path = self.parse_datapath(self.data_args.data_path)
+
+    def train_dataloader(self):
+        return PyGDataLoader(
+            self.dataset,
+            batch_size=self.args.batch_size,
+            shuffle=True,
+            num_workers=self.num_workers,
+        )
 
 
 class CalixareneDataset(Dataset):
     def __init__(
         self,
-        protein_id: str,  # I know it is not a protein, but I'm inheriting this class from DESRES data.
+        molecule_id: str,
+        data_path: Path,
         traj_id: int = 0,
         lagtime: int = 1,
-        cutoff: float = 7.0,
+        cutoff_ang: float = 7.0,
         system_selection: str | None = "all and not type H",
-        _keep_mdtraj: bool = False,
+        keep_mdtraj: bool = False,
     ):
         super().__init__()
-        traj_path = (
-            Path(os.environ["CALIX_PATH"]) / f"{protein_id}/traj/traj_com_{traj_id}.trr"
-        )
-        top_path = Path(os.environ["CALIX_PATH"]) / f"{protein_id}/data/no_water.gro"
+        traj_path = data_path / f"calixarene/{molecule_id}/traj/traj_com_{traj_id}.trr"
+        top_path = data_path / f"calixarene/{molecule_id}/data/no_water.gro"
 
         self.lagtime = lagtime
-        self.protein_id = protein_id
+        self.molecule_id = molecule_id
         self.traj_id = traj_id
-        self.cutoff = cutoff
+        self.cutoff = cutoff_ang
         traj = mdtraj_load([traj_path], top_path, 1)
+
         if system_selection is not None:
             system_atoms = traj.top.select(system_selection)
-            logger.info(f"System selection: {system_selection}")
             traj = traj.atom_slice(system_atoms)
-        if _keep_mdtraj:
+        if keep_mdtraj:
             self.traj = traj
         self.configs, self.z_table, _ = traj_to_confs(traj)
         self._metadata = {
             "system_selection": system_selection,
             "lagtime_ns": 0.001,
         }
+
+        is_rank_0 = True
+        if torch.distributed.is_initialized():
+            is_rank_0 = torch.distributed.get_rank() == 0
+
+        if is_rank_0:
+            logger.info(
+                f"Loaded {self.molecule_id}-{self.traj_id} | lagtime {self.lagtime_ns} ns | cutoff {self.cutoff} angs"
+            )
 
     @property
     def lagtime_ns(self):

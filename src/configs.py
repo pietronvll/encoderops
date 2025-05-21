@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from typing import Literal
+from dataclasses import dataclass, field
+from typing import Literal, Tuple
 
 
 @dataclass
@@ -65,6 +65,22 @@ class DESRESDataArgs:
 
 
 @dataclass
+class CalixareneDataArgs:
+    molecule_ids: Tuple[str, ...]
+    "Molecule IDs"
+    traj_ids: Tuple[int, ...] = field(default_factory=lambda: tuple(range(2)))
+    "Trajectory IDs"
+    lagtime: int = 1
+    "Lagtime (in number of frames) used to generate lagged data"
+    cutoff_ang: float = 7.0
+    "Cutoff distance in Angstroms for defining neighbors in the graph"
+    data_path: str | None = None
+    "Path to the Calixarene data. If None, tries to read the 'DATA_PATH' environment variable."
+    keep_mdtraj: bool = False
+    "Whether to keep the MDTraj trajectory in memory"
+
+
+@dataclass
 class Lorenz63DataArgs:
     lagtime: int = 1
     "Lagtime (in number of frames) used to generate lagged data"
@@ -78,7 +94,7 @@ class Lorenz63DataArgs:
 class Configs:
     trainer_args: TrainerArgs
     model_args: SchNetModelArgs | MLPModelArgs
-    data_args: DESRESDataArgs | Lorenz63DataArgs
+    data_args: DESRESDataArgs | Lorenz63DataArgs | CalixareneDataArgs
     wandb_project: str
     wandb_entity: str | None = None
     offline: bool = False
@@ -117,7 +133,7 @@ defaults = {
                 encoder_lr=1e-3,
                 linear_lr=1e-3,
                 epochs=100,
-                batch_size=512,
+                batch_size=32,
                 max_grad_norm=None,
                 normalize_lin=False,
                 regularization=0.0,
@@ -127,6 +143,46 @@ defaults = {
             model_args=MLPModelArgs(),
             data_args=Lorenz63DataArgs(lagtime=10, history_len=0),
             wandb_project="encoderops-lorenz63",
+        ),
+    ),
+    "G2": (
+        "Calixarene-G2 system",
+        Configs(
+            trainer_args=TrainerArgs(
+                latent_dim=64,
+                encoder_lr=1e-2,
+                linear_lr=1e-2,
+                min_encoder_lr=1e-4,
+                epochs=25,
+                batch_size=32,
+                max_grad_norm=0.2,
+                normalize_lin=False,
+                regularization=1e-5,
+                normalize_latents=None,
+            ),
+            model_args=SchNetModelArgs(),
+            data_args=CalixareneDataArgs(molecule_ids=("G2",), lagtime=500),
+            wandb_project="encoderops-calixarene-G2",
+        ),
+    ),
+    "G13": (
+        "Calixarene-G1+G3 system",
+        Configs(
+            trainer_args=TrainerArgs(
+                latent_dim=64,
+                encoder_lr=1e-2,
+                linear_lr=1e-2,
+                min_encoder_lr=1e-4,
+                epochs=25,
+                batch_size=128,
+                max_grad_norm=0.2,
+                normalize_lin=False,
+                regularization=1e-5,
+                normalize_latents=None,
+            ),
+            model_args=SchNetModelArgs(),
+            data_args=CalixareneDataArgs(molecule_ids=("G1", "G3"), lagtime=500),
+            wandb_project="encoderops-calixarene-G1+3",
         ),
     ),
 }
