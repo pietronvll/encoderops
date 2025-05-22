@@ -36,7 +36,7 @@ class EvolutionOperator(lightning.LightningModule):
 
         self.encoder = encoder_cls(**encoder_args)
         batch_norm = torch.nn.BatchNorm1d(
-            num_features=d, affine=False
+            num_features=trainer_args.latent_dim, affine=False
         )
         self.covariances = EMACovariance(feature_dim=d)
 
@@ -63,9 +63,9 @@ class EvolutionOperator(lightning.LightningModule):
 
     def forward_nn(self, x: torch.Tensor, lagged: bool = False) -> torch.Tensor:
         x_enc = self.encoder(x)
+        x_enc = self.normalizer(x_enc)
         if self.forecast:
             x_enc = torch.cat([x_enc, x], dim=-1)
-        x_enc = self.normalizer(x_enc)
         if lagged:
             x_enc = self.linear(x_enc)
         return x_enc
