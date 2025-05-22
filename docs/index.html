@@ -3,20 +3,18 @@
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Clarity: A Minimalist Website Template for AI Research</title>
-    <meta name="description" content="We've presented Clarity, a minimalist and elegant website template for AI research.">
+    <title>Self-Supervised Evolution Operator Learning for High-Dimensional Dynamical Systems</title>
+    <meta name="description" content="Self-Supervised Evolution Operator Learning for High-Dimensional Dynamical Systems">
     <meta name="referrer" content="no-referrer-when-downgrade">
     <meta name="robots" content="all">
     <meta content="en_EN" property="og:locale">
     <meta content="website" property="og:type">
-    <meta content="https://shikun.io/projects/clarity" property="og:url">
-    <meta content="Clarity" property="og:title">
+
     <meta content="Website Template for AI Research" property="og:description">
 
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:site" content="@your_twitter_id">
-    <meta name="twitter:description" content="Clarity: A Minimalist Website Template for AI Research">
-    <meta name="twitter:image:src" content="assets/figures/clarity.png">
+    <meta name="twitter:description" content="Self-Supervised Evolution Operator Learning for High-Dimensional Dynamical Systems">
     
     <link rel="stylesheet" type="text/css" media="all" href="assets/stylesheets/main_free.css" />
     <link rel="stylesheet" type="text/css" media="all" href="clarity/clarity.css" />
@@ -59,7 +57,7 @@
                     </p>
                     <p class="author" style="padding-top: 0px;">
                         <sup>1</sup> Istituto Italiano di Tecnologia <br>
-                        <sup>2</sup> [TODO] <br>
+                        <sup>2</sup> Zhejiang University <br>
                         <sup>3</sup> AI Centre, University College London
                     </p>
                     <p class="abstract">
@@ -92,20 +90,10 @@
             Introduction
         </h1>
         <p class='text'>
-            Lorem ipsum odor amet, consectetuer adipiscing elit. Urna non ligula sed ante ultricies. Nam nam tortor elit turpis fermentum praesent. Tristique porttitor sodales rhoncus duis tellus mus vivamus lacus. Nam platea lectus aliquam placerat; quis dignissim nisi ornare. Habitant himenaeos adipiscing dictum fringilla metus.
-        </p>
-
-        <p class="text">
-            Sagittis donec nibh etiam leo eget iaculis proin. Dapibus morbi vitae ad vestibulum montes odio varius. Ullamcorper finibus nibh suscipit libero velit suspendisse. Potenti potenti risus integer libero semper potenti vivamus. Libero cras lectus netus faucibus nisl. Congue aliquet congue ante netus eu, vestibulum arcu. Scelerisque tempor taciti senectus mus penatibus condimentum consequat in. Tempor conubia molestie tristique; orci taciti augue. Justo ultrices consequat hac vivamus proin sodales.
+            Dynamical systems are crucial for understanding phenomena across various scientific disciplines, from physics and biology to climate science. Traditionally, these systems were modeled using differential equations derived from first principles. However, as systems become larger and more complex, this approach can become computationally intractable and difficult to interpret. The recent explosion of data from experiments and high-fidelity simulations makes data-driven methods, particularly machine learning, increasingly appealing for studying complex dynamics. While many data-driven methods excel at prediction, there is a significant need for approaches that offer interpretability, which is paramount for understanding why a system evolves in a certain way. This work introduces an encoder-only approach to learn evolution operators of large-scale non-linear dynamical systems, bridging self-supervised representation learning with the theory of evolution operators to provide interpretable insights into complex natural phenomena.
         </p>
     </div>
 
-    <!-- <div class="container blog main gray">
-        <img src="clarity/images/vit.png">
-        <p class="caption">
-            Erat id non venenatis nullam leo nisl risus fames. Quis montes tortor aenean posuere non. Maximus dui cras enim tristique; ipsum pellentesque ut. Mauris hac felis elit scelerisque nascetur risus adipiscing ultrices. Quis augue pulvinar laoreet facilisis vel. Pharetra blandit nunc id, sem cubilia sit porttitor. Montes hendrerit vestibulum vulputate tincidunt facilisis metus. Interdum mi vivamus nunc consectetur adipiscing; aptent semper dictum.
-        </p>
-    </div> -->
 
     <div class="container blog main">
         <h1>Results</h1>
@@ -120,17 +108,8 @@
         <h1>Applications</h1>
         <h2>Protein folding dynamics</h2>
         <p class="text">
-            Lorem ipsum odor amet, consectetuer adipiscing elit. Himenaeos sociosqu facilisi ante; cubilia sociosqu magna libero. Dignissim vehicula felis taciti sollicitudin quam ligula a, vivamus porta. Tellus facilisi pharetra non posuere a sapien. Sagittis felis lectus ac interdum pretium sit himenaeos.
+            The Trp-Cage miniprotein, a benchmark for protein folding, was studied using our approach with a high-resolution molecular representation of all 144 heavy atoms, employing a SchNet graph neural network as the encoder. The leading eigenfunction, $\Psi_1(x)$, strongly correlated with the system's root-mean-square deviation (RMSD) from the folded structure, indicating its ability to encode the folding-to-unfolding transition. Clustering configurations based on $\Psi_1$ values clearly separated folded and unfolded ensembles. Analysis through a sparse LASSO model revealed a network of hydrogen bonds stabilizing the folded state, including side-chain interactions that previous coarse-grained models missed. The implied timescale $\tau_1$ derived from the leading eigenvalue was approximately $2.5 \mu s$, higher than that obtained by other methods, suggesting a better approximation of the true slow dynamics
         </p>
-        <ol>
-            <li>
-                <p class="text">Conubia aliquet semper inceptos ultricies vel metus fusce litora. </p>
-            </li>
-            <li>
-                <p class="text">Ultricies dis vehicula non lobortis hac sagittis urna dignissim ex. 
-                </p>
-            </li>
-        </ol>
     </div>
     <div class="container blog main">
         <img src="clarity/images/trpcage.png">
