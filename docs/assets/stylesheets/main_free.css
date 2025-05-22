@@ -457,7 +457,7 @@ div.container.blog#first-content div.blog-title .blog-cover img.background {
 
 div.container.blog p.text {
   padding: 1.5vh 0;
-  font-family: "Charter", sans-serif;
+  font-family: "Poppins", sans-serif;
 }
 div.container.blog p.text:last-child {
   padding-bottom: 0;
@@ -1465,7 +1465,7 @@ h1, h2, h3, h4, h5, h6, p, a, code, pre, ol, ul, li {
   }
 }
 footer p {
-  font-family: "Charter";
+  font-family: "Poppins";
 }
 
 /* ======================== Blog ===================== */
@@ -1493,7 +1493,7 @@ div.container.blog#first-content div.blog-title .blog-intro .info p {
 
 div.container.blog p.text {
   padding: 1.5vh 0;
-  font-family: "Charter", sans-serif;
+  font-family: "Poppins", sans-serif;
 }
 div.container.blog p.text:last-child {
   padding-bottom: 0;

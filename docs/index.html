@@ -12,8 +12,6 @@
 
     <meta content="Website Template for AI Research" property="og:description">
 
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:site" content="@your_twitter_id">
     <meta name="twitter:description" content="Self-Supervised Evolution Operator Learning for High-Dimensional Dynamical Systems">
     
     <link rel="stylesheet" type="text/css" media="all" href="assets/stylesheets/main_free.css" />
@@ -90,7 +88,7 @@
             Introduction
         </h1>
         <p class='text'>
-            Dynamical systems are crucial for understanding phenomena across various scientific disciplines, from physics and biology to climate science. Traditionally, these systems were modeled using differential equations derived from first principles. However, as systems become larger and more complex, this approach can become computationally intractable and difficult to interpret. The recent explosion of data from experiments and high-fidelity simulations makes data-driven methods, particularly machine learning, increasingly appealing for studying complex dynamics. While many data-driven methods excel at prediction, there is a significant need for approaches that offer interpretability, which is paramount for understanding why a system evolves in a certain way. This work introduces an encoder-only approach to learn evolution operators of large-scale non-linear dynamical systems, bridging self-supervised representation learning with the theory of evolution operators to provide interpretable insights into complex natural phenomena.
+            Dynamical systems are crucial for understanding phenomena across various scientific disciplines, from physics and biology to climate science. Traditionally, these systems are modeled using differential equations derived from first principles. However, as systems grow in scale and complexity, this approach quickly becomes computationally intractable and difficult to interpret, hindering the study of large-scale phenomena. Simultaneously, advancements in data collection techniques and computational power lead to an explosion of available data from experiments and high-fidelity simulations. This abundance of data makes data-driven approaches increasingly appealing for studying complex dynamics, with machine learning becoming a dominant paradigm. While many data-driven methods excel at prediction, there remains a significant gap in approaches that offer interpretability, which is paramount for understanding why a system evolves in a certain way. This work introduces an encoder-only approach to learn evolution operators of large-linear dynamical systems, bridging self-supervised representation learning with the theory of evolution operators to provide interpretable insights into complex natural phenomena.
         </p>
     </div>
 
@@ -98,7 +96,8 @@
     <div class="container blog main">
         <h1>Results</h1>
         <p class="text">
-            Arcu imperdiet nunc, dignissim ornare arcu nam eros cras venenatis. Non volutpat parturient luctus eros litora natoque; elementum dui. Nulla cubilia et nascetur dictum nisi phasellus. Natoque himenaeos porta vulputate interdum id mollis. Fames diam integer semper ligula per. Sapien ex magnis pellentesque neque rhoncus conubia. Purus torquent nunc ligula auctor cras pharetra. Porttitor vulputate dis ante suspendisse a iaculis massa sagittis.
+            Our method proposes an encoder-only approach for learning evolution operators that is based on self-supervised contrastive learning and scales effectively to large dynamical systems. This approach reveals a deep connection between evolution operator learning and contrastive self-supervised representation learning schemes. The core idea is to optimize a model for the density ratio using a bilinear form $\langle\varphi(x_{t}),P\varphi(x_{t+1})\rangle$, where $\varphi$ is a d-dimensional encoder and P is a linear predictor layer that approximates the action of the evolution operator E. Unlike traditional encoder-decoder schemes that minimize reconstruction errors and can be twice as large, our encoder-only method prioritizes approximating the spectral decomposition of E over raw forecasting performances, as the main advantages of evolution operators stem from their spectral decomposition. The loss function directly optimizes the $L^{2}$ error between the density ratio and our bilinear model, matching the negative VAMP-2 score when the predictor is optimal. Crucially, our approach avoids computationally unwieldy and unstable matrix inversions in the loss computation, which are common in other methods, instead relying on simple matrix multiplications that are efficient for GPU-based training. This makes the method broadly applicable, especially for interpretability and model reduction in scientific dynamical systems.
+
         </p>
     </div>
 
@@ -108,7 +107,8 @@
         <h1>Applications</h1>
         <h2>Protein folding dynamics</h2>
         <p class="text">
-            The Trp-Cage miniprotein, a benchmark for protein folding, was studied using our approach with a high-resolution molecular representation of all 144 heavy atoms, employing a SchNet graph neural network as the encoder. The leading eigenfunction, $\Psi_1(x)$, strongly correlated with the system's root-mean-square deviation (RMSD) from the folded structure, indicating its ability to encode the folding-to-unfolding transition. Clustering configurations based on $\Psi_1$ values clearly separated folded and unfolded ensembles. Analysis through a sparse LASSO model revealed a network of hydrogen bonds stabilizing the folded state, including side-chain interactions that previous coarse-grained models missed. The implied timescale $\tau_1$ derived from the leading eigenvalue was approximately $2.5 \mu s$, higher than that obtained by other methods, suggesting a better approximation of the true slow dynamics
+            The Trp-Cage miniprotein, a widely studied benchmark for protein folding, is analyzed using our approach with a high-resolution molecular representation of all 144 heavy atoms, employing a SchNet graph neural network as the encoder. The leading eigenfunction $\Psi_{1}(x)=\langle q_{1},\varphi(x)\rangle$ strongly correlates with the system's root-mean-square deviation (RMSD) from the folded structure, confirming that $\Psi_{1}$ encodes the folding-to-unfolding transition. Clustering the molecular configurations according to the values of $\Psi_{1}$ clearly separates folded and unfolded ensembles. Analysis through a sparse LASSO model reveals a network of hydrogen bonds stabilizing the folded state, including contributions from side-chain interactions that previous coarse-grained models miss. The implied timescale $\tau_{1}$ derived from the leading eigenvalue of the learned operator is approximately $2.5~\mu s$, which is higher than the $2~\mu s$ timescale obtained by other methods, suggesting a better approximation of the true slow dynamics.
+
         </p>
     </div>
     <div class="container blog main">
@@ -119,7 +119,8 @@
 
         <h2>Ligand binding dynamics</h2>
         <p class="text">
-            Lorem ipsum odor amet, consectetuer adipiscing elit. Himenaeos sociosqu facilisi ante; cubilia sociosqu magna libero. Dignissim vehicula felis taciti sollicitudin quam ligula a, vivamus porta. Tellus facilisi pharetra non posuere a sapien. Sagittis felis lectus ac interdum pretium sit himenaeos.
+            Our method applies to ligand binding dynamics, specifically involving Calixarene host-guest systems. The eigenfunctions $\Psi_{1}$ and $\Psi_{2}$ effectively capture ligand transitions between unbound, semi-bound, and bound states. The model learns these dynamics both from scratch and by transferring representations from other ligands, with the latter closely matching the former. This demonstrates the method's capability to provide insights into complex molecular interaction processes.
+
         </p>
     </div>
     <div class="container blog main">
@@ -128,7 +129,7 @@
     <div class="container blog main">
         <h2>Climate Patterns</h2>
         <p class="text">
-            Lorem ipsum odor amet, consectetuer adipiscing elit. Himenaeos sociosqu facilisi ante; cubilia sociosqu magna libero. Dignissim vehicula felis taciti sollicitudin quam ligula a, vivamus porta. Tellus facilisi pharetra non posuere a sapien. Sagittis felis lectus ac interdum pretium sit himenaeos.
+            In our experiment on climate patterns, we apply our method to analyze the El Niño-Southern Oscillation (ENSO), a major driver of global climate variability. Our approach aims to identify and characterize the spatio-temporal patterns associated with ENSO events. The leading eigenfunctions of the learned evolution operator are highly correlated to ENSO phenomenon. This application demonstrates the potential of our framework for extracting meaningful and interpretable patterns from high-dimensional climate data, offering a data-driven perspective to understanding complex Earth system dynamics.
         </p>
     </div>
     <div class="container blog main">
@@ -137,22 +138,11 @@
 
 
     <div class="container blog main">
-        <h1>Conclusion</h1>
-        <p class="text">
-            Per aptent diam; ut in mauris ultricies torquent conubia dolor. Aliquet venenatis sapien, dictum finibus ad dui. Finibus sollicitudin nullam consectetur malesuada molestie semper dolor. Platea eget hac cursus aptent maecenas penatibus vulputate. Ligula libero torquent sit per praesent praesent. Sodales risus mattis enim odio risus tristique. Dapibus vivamus quis scelerisque sollicitudin penatibus placerat erat. Ante aliquet vel; morbi quisque leo morbi. Ac sollicitudin imperdiet lacus integer cursus metus parturient euismod sociosqu.
-        </p>
-    </div>
-
-    <div class="container blog main">
         <h1>Citation</h1>
-        <p class="text">
-            Dictumst eu himenaeos malesuada nisi eros auctor id suspendisse. Ipsum parturient est vitae proin maecenas. Nulla mollis vivamus cras nam dapibus consectetur. Id efficitur ac ultricies ornare at litora. Vestibulum nibh cursus eu gravida vivamus sem vulputate. Montes nisi ipsum urna vitae semper suscipit.
-        </p>
-<pre><code class="plaintext">@article{doe2048agi,
-    title={Artificial General Intelligence},
-    author={Doe John},
-    journal={nature},
-    year={2048}
+<pre><code class="plaintext">@article{turri2025self,
+    title={Self-Supervised Evolution Operator Learning for High-Dimensional Dynamical Systems},
+    author={Turri Giacomo, Bonati Luigi, Zhu Kai, Pontil Massimiliano, Novelli Pietro},
+    year={2025}
 }</code></pre>
     </div>
 
