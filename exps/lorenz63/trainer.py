@@ -15,6 +15,7 @@ from src.modules import MLP
 
 
 def main(cfg: Configs):
+    torch.manual_seed(cfg.trainer_args.seed)
     datamodule = Lorenz63DataModule(
         cfg.trainer_args, cfg.data_args, cfg.dataloader_workers
     )
@@ -26,6 +27,8 @@ def main(cfg: Configs):
         entity=cfg.wandb_entity,
         offline=cfg.offline,
         save_dir="./logs",
+        tags=["EvOp"],
+        name=f"EvOp_rep{cfg.trainer_args.seed}",    
     )
 
     checkpoint_callback = ModelCheckpoint(

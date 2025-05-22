@@ -27,13 +27,16 @@ class EvolutionOperator(lightning.LightningModule):
         self.encoder_args = encoder_args
         self.save_hyperparameters()
         self.automatic_optimization = False
+        self.forecast = trainer_args.forecast
 
         self.encoder = encoder_cls(**encoder_args)
         batch_norm = torch.nn.BatchNorm1d(
             num_features=self.trainer_args.latent_dim, affine=False
         )
-
-        self.covariances = EMACovariance(feature_dim=trainer_args.latent_dim)
+        if self.forecast:
+            self.covariances = EMACovariance(feature_dim=trainer_args.latent_dim+encoder_args['input_shape'])
+        else:
+            self.covariances = EMACovariance(feature_dim=trainer_args.latent_dim)  
 
         if trainer_args.normalize_latents == "simnorm":
             assert trainer_args.simnorm_dim > 0
@@ -45,9 +48,14 @@ class EvolutionOperator(lightning.LightningModule):
         else:  # None
             self.normalizer = torch.nn.Sequential(batch_norm)
 
-        self.linear = torch.nn.Linear(
-            trainer_args.latent_dim, trainer_args.latent_dim, bias=False
-        )
+        if self.forecast:
+            self.linear = torch.nn.Linear(
+                trainer_args.latent_dim+encoder_args['input_shape'], trainer_args.latent_dim+encoder_args['input_shape'], bias=False
+            )
+        else:
+            self.linear = torch.nn.Linear(
+                trainer_args.latent_dim, trainer_args.latent_dim, bias=False
+            )
         self._global_step = 0
         self._samples = 0
         if self.trainer_args.normalize_lin:
@@ -58,11 +66,13 @@ class EvolutionOperator(lightning.LightningModule):
         return self.forward_nn(x)
 
     def forward_nn(self, x: torch.Tensor, lagged: bool = False) -> torch.Tensor:
-        x = self.encoder(x)
-        x = self.normalizer(x)
+        x_enc = self.encoder(x)
+        x_enc = self.normalizer(x_enc)
+        if self.forecast:
+            x_enc = torch.cat([x_enc, x], dim=-1)
         if lagged:
-            x = self.linear(x)
-        return x
+            x_enc = self.linear(x_enc)
+        return x_enc
 
     @torch.no_grad()
     def get_timescales(self):
@@ -77,7 +87,10 @@ class EvolutionOperator(lightning.LightningModule):
 
     @torch.no_grad()
     def get_transfer_operator(self, reg: float = 1e-4):
-        d = self.trainer_args.latent_dim
+        if self.forecast:
+            d = self.trainer_args.latent_dim + self.encoder_args["input_shape"]
+        else:
+            d = self.trainer_args.latent_dim
         regularizer = reg * torch.eye(d, out=torch.empty_like(self.covariances.cov_X))
         reg_cov = regularizer + self.covariances.cov_X
         transfer_operator = torch.linalg.solve(reg_cov, self.covariances.cov_XY)
