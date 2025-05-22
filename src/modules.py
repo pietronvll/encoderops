@@ -1,14 +1,14 @@
+import timm
 import torch
 import torch.distributed
 from linear_operator_learning.nn import MLP as lolMLP
-from linear_operator_learning.nn import resnet18
 from mlcolvar.core.nn.graph.schnet import SchNetModel
 
 
 class ResNet18(torch.nn.Module):
     def __init__(self, **model_args):
         super().__init__()
-        self.model = resnet18(**model_args)
+        self.model = timm.create_model("resnet18", **model_args)
 
     def forward(self, data):
         return self.model(data)

@@ -40,8 +40,8 @@ def main(cfg: Configs):
     )
     # Model
     encoder_args = {
-        "num_features": cfg.trainer_args.latent_dim,
-        "channels_in": cfg.data_args.history_len + 1,
+        "num_classes": cfg.trainer_args.latent_dim,
+        "in_chans": cfg.data_args.history_len + 1,
     }
     encoder_args = encoder_args | asdict(cfg.model_args)
     model = EvolutionOperator(ResNet18, encoder_args, cfg.trainer_args)

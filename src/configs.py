@@ -50,8 +50,8 @@ class MLPModelArgs:
 
 @dataclass
 class ResNet18ModelArgs:
-    padding_mode: str = "circular"
-    "Padding mode"
+    drop_rate: float = 0.2
+    "Dropout rate"
 
 
 @dataclass
@@ -205,14 +205,14 @@ defaults = {
         "Enso Modes",
         Configs(
             trainer_args=TrainerArgs(
-                latent_dim=32,
-                encoder_lr=1e-4,
-                linear_lr=0.01,
+                latent_dim=128,
+                encoder_lr=1e-3,
+                linear_lr=1e-3,
                 epochs=1000,
-                batch_size=128,
-                max_grad_norm=None,
+                batch_size=64,
+                max_grad_norm=1e-5,
                 normalize_lin=False,
-                regularization=0.0,
+                regularization=1e-4,
                 normalize_latents="euclidean",
                 # simnorm_dim=2,
             ),
