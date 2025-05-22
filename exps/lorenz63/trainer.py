@@ -5,9 +5,8 @@ from dataclasses import asdict
 import torch
 import tyro
 from lightning.pytorch import Trainer, seed_everything
-from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.callbacks import ModelCheckpoint, Timer
 from lightning.pytorch.loggers import WandbLogger
-from time import perf_counter
 
 from src.configs import Configs, defaults
 from src.data import Lorenz63DataModule
@@ -35,10 +34,12 @@ def main(cfg: Configs):
     checkpoint_callback = ModelCheckpoint(
         every_n_epochs=25, save_top_k=-1, save_last=True
     )
+    # Timer
+    timer = Timer()
     # Trainer
     trainer = Trainer(
         logger=wandb_logger,
-        callbacks=[checkpoint_callback],
+        callbacks=[checkpoint_callback, timer],
         accelerator="cuda",
         devices=cfg.num_devices,
         max_epochs=cfg.trainer_args.epochs,
@@ -57,9 +58,8 @@ def main(cfg: Configs):
     }
     encoder_args = encoder_args | asdict(cfg.model_args)
     model = EvolutionOperator(MLP, encoder_args, cfg.trainer_args)
-    start = perf_counter()
     trainer.fit(model, datamodule=datamodule)
-    runtime = perf_counter() - start
+    runtime = timer.time_elapsed("train")
     wandb_logger.experiment.log({"runtime": runtime})
 
 
