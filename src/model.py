@@ -27,16 +27,18 @@ class EvolutionOperator(lightning.LightningModule):
         self.encoder_args = encoder_args
         self.save_hyperparameters()
         self.automatic_optimization = False
+
         self.forecast = trainer_args.forecast
+        if self.forecast:
+            d = trainer_args.latent_dim+encoder_args['input_shape']
+        else:
+            d = trainer_args.latent_dim
 
         self.encoder = encoder_cls(**encoder_args)
         batch_norm = torch.nn.BatchNorm1d(
-            num_features=self.trainer_args.latent_dim, affine=False
+            num_features=d, affine=False
         )
-        if self.forecast:
-            self.covariances = EMACovariance(feature_dim=trainer_args.latent_dim+encoder_args['input_shape'])
-        else:
-            self.covariances = EMACovariance(feature_dim=trainer_args.latent_dim)  
+        self.covariances = EMACovariance(feature_dim=d)
 
         if trainer_args.normalize_latents == "simnorm":
             assert trainer_args.simnorm_dim > 0
@@ -48,14 +50,8 @@ class EvolutionOperator(lightning.LightningModule):
         else:  # None
             self.normalizer = torch.nn.Sequential(batch_norm)
 
-        if self.forecast:
-            self.linear = torch.nn.Linear(
-                trainer_args.latent_dim+encoder_args['input_shape'], trainer_args.latent_dim+encoder_args['input_shape'], bias=False
-            )
-        else:
-            self.linear = torch.nn.Linear(
-                trainer_args.latent_dim, trainer_args.latent_dim, bias=False
-            )
+        self.linear = torch.nn.Linear(d, d, bias=False)
+
         self._global_step = 0
         self._samples = 0
         if self.trainer_args.normalize_lin:
@@ -67,9 +63,9 @@ class EvolutionOperator(lightning.LightningModule):
 
     def forward_nn(self, x: torch.Tensor, lagged: bool = False) -> torch.Tensor:
         x_enc = self.encoder(x)
-        x_enc = self.normalizer(x_enc)
         if self.forecast:
             x_enc = torch.cat([x_enc, x], dim=-1)
+        x_enc = self.normalizer(x_enc)
         if lagged:
             x_enc = self.linear(x_enc)
         return x_enc
@@ -203,8 +199,8 @@ class EvolutionOperator(lightning.LightningModule):
             self.encoder.parameters(),
             lr=self.trainer_args.encoder_lr,
         )
-        linear_opt = SGD(
-            self.linear.parameters(), lr=self.trainer_args.linear_lr, momentum=0.9
+        linear_opt = AdamW(
+            self.linear.parameters(), lr=self.trainer_args.linear_lr
         )
 
         configuration = (

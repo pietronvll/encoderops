@@ -4,7 +4,7 @@ from dataclasses import asdict
 
 import torch
 import tyro
-from lightning import Trainer
+from lightning.pytorch import Trainer, seed_everything
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 
@@ -15,7 +15,7 @@ from src.modules import MLP
 
 
 def main(cfg: Configs):
-    torch.manual_seed(cfg.trainer_args.seed)
+    seed_everything(cfg.trainer_args.seed, workers=True)
     datamodule = Lorenz63DataModule(
         cfg.trainer_args, cfg.data_args, cfg.dataloader_workers
     )
