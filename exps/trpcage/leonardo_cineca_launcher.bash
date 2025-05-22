@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --account=IscrC_LR4LSDS     # project name
+#SBATCH --account=<your_account>     # project name
 #SBATCH --partition=boost_usr_prod  # partition to be used
 #SBATCH --time 4:00:00              # format: HH:MM:SS
 #SBATCH --nodes=1                   # node
