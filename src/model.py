@@ -6,7 +6,7 @@ import torch
 from linear_operator_learning.nn import SimNorm
 from loguru import logger
 from torch.nn.utils.parametrizations import spectral_norm
-from torch.optim import SGD, AdamW
+from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from src.configs import TrainerArgs

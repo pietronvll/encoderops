@@ -150,14 +150,14 @@ defaults = {
         Configs(
             trainer_args=TrainerArgs(
                 latent_dim=8,
-                encoder_lr=2e-4,
+                encoder_lr=1e-3,
                 linear_lr=1e-3,
                 epochs=100,
                 batch_size=512,
                 max_grad_norm=None,
                 normalize_lin=False,
                 regularization=0.0,
-                min_encoder_lr=None,
+                min_encoder_lr=1e-4,
                 normalize_latents=None,
                 forecast=True,
             ),

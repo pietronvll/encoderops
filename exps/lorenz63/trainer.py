@@ -7,6 +7,7 @@ import tyro
 from lightning.pytorch import Trainer, seed_everything
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
+from time import perf_counter
 
 from src.configs import Configs, defaults
 from src.data import Lorenz63DataModule
@@ -56,7 +57,10 @@ def main(cfg: Configs):
     }
     encoder_args = encoder_args | asdict(cfg.model_args)
     model = EvolutionOperator(MLP, encoder_args, cfg.trainer_args)
+    start = perf_counter()
     trainer.fit(model, datamodule=datamodule)
+    runtime = perf_counter() - start
+    wandb_logger.experiment.log({"runtime": runtime})
 
 
 if __name__ == "__main__":

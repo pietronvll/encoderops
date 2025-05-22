@@ -772,8 +772,8 @@ class Lorenz63Dataset(Dataset):
         dataset_path = Path(data_path) / "lorenz63/lorenz63_dataset.nc"
         ds = xr.open_dataset(dataset_path)
         self.ds = ds.sel(time=ds.split == split)
-        self.data = ds["trajectory"].values
-        self.time = ds["time"].values
+        self.data = self.ds["trajectory"].values
+        self.time = self.ds["time"].values
         if torch.distributed.is_initialized():
             if torch.distributed.get_rank() == 0:
                 logger.info(
