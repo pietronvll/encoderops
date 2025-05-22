@@ -162,7 +162,7 @@ defaults = {
                 forecast=True,
             ),
             model_args=MLPModelArgs(),
-            data_args=Lorenz63DataArgs(lagtime=10, history_len=0, data_path='/media/gturri/projects/lorenz63_representations/data'),
+            data_args=Lorenz63DataArgs(lagtime=10, history_len=0),
             wandb_project="encoderops-lorenz63",
             wandb_entity="csml",
             num_devices=1,
@@ -174,12 +174,12 @@ defaults = {
             trainer_args=TrainerArgs(
                 latent_dim=8,
                 encoder_lr=1e-3,
-                linear_lr=1e-3, #not used in VAMPNets
+                linear_lr=1e-3,  # not used in VAMPNets
                 epochs=100,
                 batch_size=512,
-                max_grad_norm=None, #not used in VAMPNets
-                normalize_lin=False, #not used in VAMPNets
-                regularization=0.0, #not used in VAMPNets
+                max_grad_norm=None,  # not used in VAMPNets
+                normalize_lin=False,  # not used in VAMPNets
+                regularization=0.0,  # not used in VAMPNets
             ),
             model_args=MLPModelArgs(),
             data_args=Lorenz63DataArgs(lagtime=1, history_len=0),
