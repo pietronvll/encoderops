@@ -6,7 +6,7 @@ import torch
 from linear_operator_learning.nn import SimNorm
 from loguru import logger
 from torch.nn.utils.parametrizations import spectral_norm
-from torch.optim import Adam
+from torch.optim import SGD, AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from src.configs import TrainerArgs
@@ -186,11 +186,13 @@ class EvolutionOperator(lightning.LightningModule):
         Initialize the optimizer based on self._optimizer_name and self.optimizer_kwargs.
         """
 
-        encoder_opt = Adam(
+        encoder_opt = AdamW(
             self.encoder.parameters(),
             lr=self.trainer_args.encoder_lr,
         )
-        linear_opt = Adam(self.linear.parameters(), lr=self.trainer_args.linear_lr)
+        linear_opt = SGD(
+            self.linear.parameters(), lr=self.trainer_args.linear_lr, momentum=0.9
+        )
 
         configuration = (
             {

@@ -493,25 +493,33 @@ class SSTDataModule(LightningDataModule):
         self.data_path = self.parse_datapath(self.data_args.data_path)
 
     def setup(self, stage):
-        self.train_dataset = SSTDataset(
-            lagtime=self.data_args.lagtime,
-            history_len=self.data_args.history_len,
-            data_path=self.data_path,
-            split="train",
-        )
-        self.val_dataset = SSTDataset(
-            lagtime=self.data_args.lagtime,
-            history_len=self.data_args.history_len,
-            data_path=self.data_path,
-            split="val",
-        )
+        if stage == "fit":
+            self.train_dataset = SSTDataset(
+                lagtime=self.data_args.lagtime,
+                history_len=self.data_args.history_len,
+                data_path=self.data_path,
+                split="train",
+            )
+            self.val_dataset = SSTDataset(
+                lagtime=self.data_args.lagtime,
+                history_len=self.data_args.history_len,
+                data_path=self.data_path,
+                split="val",
+            )
+        elif stage == "test":
+            self.full_dataset = SSTDataset(
+                lagtime=self.data_args.lagtime,
+                history_len=self.data_args.history_len,
+                data_path=self.data_path,
+                split="full",
+            )
 
     def train_dataloader(self):
         return DataLoader(
             self.train_dataset,
             batch_size=self.args.batch_size,
             shuffle=True,
-            num_workers=self.num_workers,
+            drop_last=True,
         )
 
     def val_dataloader(self):
@@ -519,7 +527,7 @@ class SSTDataModule(LightningDataModule):
             self.val_dataset,
             batch_size=self.args.batch_size,
             shuffle=False,
-            num_workers=self.num_workers,
+            drop_last=False,
         )
 
 
@@ -529,7 +537,7 @@ class SSTDataset(Dataset):
         lagtime: int = 1,
         history_len: int = 0,
         data_path: str | Path | None = None,
-        split: Literal["train", "val"] = "train",
+        split: Literal["train", "val", "full"] = "train",
     ):
         # If data_path is not specified, read it from the environment variable "DATA_PATH"
         self.lagtime = lagtime
@@ -562,10 +570,15 @@ class SSTDataset(Dataset):
             longitude_range=(0.0, 360.0),
         )
         split_years = {"train": list(range(1979, 2017)), "val": list(range(2017, 2024))}
-        time_mask = ds.time.dt.year.isin(split_years[split])
-        self.ds = ds.sel(time=time_mask)
-        self.oni = oni.sel(time=time_mask)
-        self.oni_full = oni_full.sel(time=time_mask)
+        if split == "full":
+            self.ds = ds
+            self.oni = oni
+            self.oni_full = oni_full
+        else:
+            time_mask = ds.time.dt.year.isin(split_years[split])
+            self.ds = ds.sel(time=time_mask)
+            self.oni = oni.sel(time=time_mask)
+            self.oni_full = oni_full.sel(time=time_mask)
         self.data = np.squeeze(self.ds.__xarray_dataarray_variable__.values)
         self.time = self.ds.time.values
         if torch.distributed.is_initialized():
