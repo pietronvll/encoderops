@@ -438,8 +438,8 @@ class Lorenz63DataModule(LightningDataModule):
             self.val_dataset,
             batch_size=len(self.val_dataset),
             shuffle=False,
-            num_workers=0,
-            persistent_workers=False,
+            num_workers=1,
+            persistent_workers=True,
         )
 
     def test_dataloader(self):
@@ -447,8 +447,8 @@ class Lorenz63DataModule(LightningDataModule):
             self.test_dataset,
             batch_size=len(self.test_dataset),
             shuffle=False,
-            num_workers=0,
-            persistent_workers=False,
+            num_workers=1,
+            persistent_workers=True,
         )
 
 
