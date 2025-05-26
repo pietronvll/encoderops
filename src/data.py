@@ -529,7 +529,7 @@ class SSTDataModule(LightningDataModule):
         return DataLoader(
             self.val_dataset,
             batch_size=self.args.batch_size,
-            shuffle=False,
+            shuffle=True,
             drop_last=False,
         )
 
