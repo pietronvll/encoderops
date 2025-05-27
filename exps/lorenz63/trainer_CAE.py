@@ -10,7 +10,7 @@ from src.configs import Configs, defaults
 from src.data import Lorenz63DataModule
 from src.modules import MLP
 
-from kooplearn.models import DynamicAE
+from kooplearn.models import ConsistentAE
 from kooplearn.data import traj_to_contexts
 from torch.utils.data import DataLoader
 from kooplearn.nn.data import collate_context_dataset
@@ -24,7 +24,7 @@ def main(cfg: Configs):
     datamodule.prepare_data()
     datamodule.setup("fit")
     train_data = datamodule.train_dataset.data
-    train_ctxs = traj_to_contexts(train_data.astype('float32'), time_lag=cfg.data_args.lagtime, backend='numpy')
+    train_ctxs = traj_to_contexts(train_data.astype('float32'), time_lag=cfg.data_args.lagtime, backend='numpy', context_window_len=3)
     train_dl = DataLoader(
         train_ctxs,
         batch_size = cfg.trainer_args.batch_size,
@@ -49,8 +49,8 @@ def main(cfg: Configs):
         entity=cfg.wandb_entity,
         offline=cfg.offline,
         save_dir="./logs",
-        tags=["DAE"],
-        name=f"DAE_rep{cfg.trainer_args.seed}",    
+        tags=["CAE"],
+        name=f"CAE_rep{cfg.trainer_args.seed}",    
     )
 
     checkpoint_callback = ModelCheckpoint(
@@ -92,17 +92,22 @@ def main(cfg: Configs):
     }
 
     encoder_args = encoder_args | asdict(cfg.model_args)
-    dae = DynamicAE(
+    dae = ConsistentAE(
         encoder=MLP,
         decoder=MLP,
         latent_dim=cfg.trainer_args.latent_dim,
         optimizer_fn=torch.optim.Adam,
         optimizer_kwargs={'lr': cfg.trainer_args.encoder_lr},
         trainer=trainer,
-        loss_weights={"rec": 1.0, "pred": 1.0, "lin": 1.0},
+        loss_weights= {
+            "rec": 1.0,
+            "pred": 1.0,
+            "bwd_pred": 1.0,
+            "lin": 1.0,
+            "consistency": 1.0,
+        },
         encoder_kwargs=encoder_args,
         decoder_kwargs=decoder_args,
-        use_lstsq_for_evolution=False,
         seed=cfg.trainer_args.seed)
     dae.fit(train_dl, val_dl)
     runtime = timer.time_elapsed("train")

@@ -208,6 +208,26 @@ defaults = {
             num_devices=1,
         ),
     ),
+    "l63-cae": (
+        "Lorenz63 - CAE",
+        Configs(
+            trainer_args=TrainerArgs(
+                latent_dim=8,
+                encoder_lr=1e-3,
+                linear_lr=1e-3, #not used in CAE
+                epochs=100,
+                batch_size=512,
+                max_grad_norm=None, #not used in CAE
+                normalize_lin=False, #not used in CAE
+                regularization=0.0, #not used in CAE
+            ),
+            model_args=MLPModelArgs(),
+            data_args=Lorenz63DataArgs(lagtime=1, history_len=0),
+            wandb_project="encoderops-lorenz63",
+            wandb_entity="csml",
+            num_devices=1,
+        ),
+    ),
     "G2": (
         "Calixarene-G2 system",
         Configs(
