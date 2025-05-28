@@ -3,7 +3,7 @@ from dataclasses import asdict
 import lightning
 import numpy as np
 import torch
-from linear_operator_learning.nn import SimNorm
+from linear_operator_learning.nn import SimNorm, EMACovariance
 from loguru import logger
 from torch.nn.utils.parametrizations import spectral_norm
 from torch.optim import AdamW
@@ -11,7 +11,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from src.configs import TrainerArgs
 from src.loss import RegSpectralLoss
-from src.modules import EMACovariance, EuclideanNorm
+from src.modules import EuclideanNorm
 from src.utils import effective_rank, lin_svdvals
 
 

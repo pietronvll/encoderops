@@ -570,7 +570,7 @@ requires-dist = [
     { name = "ipykernel", specifier = ">=6.29.5" },
     { name = "itables", specifier = ">=2.4.0" },
     { name = "kooplearn", specifier = ">=1.1.3" },
-    { name = "linear-operator-learning", specifier = ">=0.2.3" },
+    { name = "linear-operator-learning", specifier = ">=0.2.5" },
     { name = "lmdb", specifier = ">=1.6.2" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "matscipy", specifier = ">=1.1.1" },
@@ -1316,16 +1316,16 @@ wheels = [
 
 [[package]]
 name = "linear-operator-learning"
-version = "0.2.3"
+version = "0.2.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
     { name = "scipy" },
     { name = "torch" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/04/9e/25e5d8832a09e76cff192cfc2fbd06bc0e5cfe7ba27c0d1a1202fc33b4b1/linear_operator_learning-0.2.3.tar.gz", hash = "sha256:0a9cfc899211c647d85f1c8256be85ac0dfd10f312c947ec6144886d92936a97", size = 563418 }
+sdist = { url = "https://files.pythonhosted.org/packages/fe/2b/25e983086b5c4aa4f641268ea410263f370efe622d627434423596f6666e/linear_operator_learning-0.2.5.tar.gz", hash = "sha256:417f41f35e233c86980418d604d96b89290de11e041e0211ef15b3f24d7c58f6", size = 569209 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ca/00/b8ce2faefada15c0e62a65917b40b7841b033ac60c37bf7e445c86dd0d09/linear_operator_learning-0.2.3-py3-none-any.whl", hash = "sha256:57ad2e39c64e473397b270f93762123607fdded62cb307167616dcc43ddd5048", size = 34484 },
+    { url = "https://files.pythonhosted.org/packages/1b/9a/a240e1dac23a3466525471c1a44872ae8d3aa458208a9f9c0c15859805fa/linear_operator_learning-0.2.5-py3-none-any.whl", hash = "sha256:c4d3e09a2e0611491be9df4221a1532a4440091e6c38fbe9a0aa6d2ad2f23346", size = 26820 },
 ]
 
 [[package]]
