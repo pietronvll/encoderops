@@ -3,7 +3,7 @@ from dataclasses import asdict
 import lightning
 import numpy as np
 import torch
-from linear_operator_learning.nn import SimNorm, EMACovariance
+from linear_operator_learning.nn import SimNorm
 from loguru import logger
 from torch.nn.utils.parametrizations import spectral_norm
 from torch.optim import AdamW
@@ -11,7 +11,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from src.configs import TrainerArgs
 from src.loss import RegSpectralLoss
-from src.modules import EuclideanNorm
+from src.modules import EMACovariance, EuclideanNorm
 from src.utils import effective_rank, lin_svdvals
 
 
@@ -30,7 +30,7 @@ class EvolutionOperator(lightning.LightningModule):
 
         self.forecast = trainer_args.forecast
         if self.forecast:
-            d = trainer_args.latent_dim+encoder_args['input_shape']
+            d = trainer_args.latent_dim + encoder_args["input_shape"]
         else:
             d = trainer_args.latent_dim
 
@@ -199,9 +199,7 @@ class EvolutionOperator(lightning.LightningModule):
             self.encoder.parameters(),
             lr=self.trainer_args.encoder_lr,
         )
-        linear_opt = AdamW(
-            self.linear.parameters(), lr=self.trainer_args.linear_lr
-        )
+        linear_opt = AdamW(self.linear.parameters(), lr=self.trainer_args.linear_lr)
 
         configuration = (
             {
