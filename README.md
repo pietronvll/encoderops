@@ -5,14 +5,14 @@ uv sync --no-install-package torch-scatter
 uv sync --no-build-isolation
 ```
 ## Training commands:
-Create a `.venv` file in the root of the repo to define the `DATA_PATH` environment variable. The datasets will be downloaded / processed in this path. 
+Create a `.env` file in the root of the repo to define the `DATA_PATH` environment variable. The datasets will be downloaded / processed in this path. 
 ```
 DATA_PATH = your/dataset/path
 ```
 From the root of the repo run:
 ### Lorenz63 
 ```
-uv run --env-file=.venv -- python -m exps.lorenz63.trainer l63 --help
+uv run --env-file=.env -- python -m exps.lorenz63.trainer l63 --help
 ```
 ### TRP-CAGE (protein-folding)
 Before running this experiment, you need to obtain a copy of the data by requesting it at [this webpage](https://www.deshawresearch.com/downloads/download_trajectory_science2011.cgi/). Then, follow these steps to preprocess the data:
@@ -24,14 +24,14 @@ uv run --env-file=.env -- python -m scripts.to_lmdb --protein-id 2JOF
 ```
 It is _strongly advised_ to have the `DATA_PATH` on an SSD. Once the data has been preprocessed, just run
 ```
-uv run --env-file=.venv -- python -m exps.trpcage.trainer trp-cage --help
+uv run --env-file=.env -- python -m exps.trpcage.trainer trp-cage --help
 ```
 ### Calixarene (ligand-binding) 
 ```
-uv run --env-file=.venv -- python -m exps.calixarene.trainer G2 --help # G2 ligand
-uv run --env-file=.venv -- python -m exps.calixarene.trainer G13 --help # G1 + G3 ligands
+uv run --env-file=.env -- python -m exps.calixarene.trainer G2 --help # G2 ligand
+uv run --env-file=.env -- python -m exps.calixarene.trainer G13 --help # G1 + G3 ligands
 ```
 #### ENSO 
 ```
-uv run --env-file=.venv -- python -m exps.ENSO.trainer ENSO --help
+uv run --env-file=.env -- python -m exps.ENSO.trainer ENSO --help
 ```
