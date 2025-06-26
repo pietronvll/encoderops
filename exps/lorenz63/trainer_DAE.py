@@ -1,7 +1,6 @@
 import torch
-
-import torch
 import tyro
+
 from lightning import Trainer
 from lightning.pytorch.callbacks import ModelCheckpoint, Timer
 from lightning.pytorch.loggers import WandbLogger
@@ -10,12 +9,74 @@ from src.configs import Configs, defaults
 from src.data import Lorenz63DataModule
 from src.modules import MLP
 
-from kooplearn.models import DynamicAE
+from exps.lorenz63.dae import DynamicAE
 from kooplearn.data import traj_to_contexts
 from torch.utils.data import DataLoader
 from kooplearn.nn.data import collate_context_dataset
-
 from dataclasses import asdict
+from linear_operator_learning.nn import MLP
+
+
+class MLPEncoder(torch.nn.Module):
+    def __init__(
+        self,
+        input_shape,
+        n_hidden,
+        layer_size,
+        output_shape,
+        dropout=0.0,
+        activation=torch.nn.ReLU,
+        iterative_whitening=False,
+        bias=True,
+    ):
+        super(MLPEncoder, self).__init__()
+
+        self.encoder = MLP(
+            input_shape=input_shape,
+            n_hidden=n_hidden,
+            layer_size=layer_size,
+            output_shape=output_shape,
+            dropout=dropout,
+            activation=activation,
+            iterative_whitening=iterative_whitening,
+            bias=bias,
+        )
+        
+    def forward(self, x):
+        x_enc = self.encoder(x)
+        x_enc = torch.cat([x_enc, x], dim=-1)
+        return x_enc
+    
+    
+class MLPDecoder(torch.nn.Module):
+    def __init__(
+        self,
+        input_shape,
+        n_hidden,
+        layer_size,
+        output_shape,
+        dropout=0.0,
+        activation=torch.nn.ReLU,
+        iterative_whitening=False,
+        bias=True,
+    ):
+        super(MLPDecoder, self).__init__()
+
+        self.decoder = MLP(
+            input_shape=input_shape,
+            n_hidden=n_hidden,
+            layer_size=layer_size,
+            output_shape=output_shape,
+            dropout=dropout,
+            activation=activation,
+            iterative_whitening=iterative_whitening,
+            bias=bias,
+        )
+        
+    def forward(self, x):
+        x_enc = self.decoder(x)
+        return x_enc
+
 
 def main(cfg: Configs):
     datamodule = Lorenz63DataModule(
@@ -81,7 +142,7 @@ def main(cfg: Configs):
         "bias": True,
     }
     decoder_args = {
-        'input_shape': cfg.trainer_args.latent_dim,
+        'input_shape': cfg.trainer_args.latent_dim + 3,
         'n_hidden': 2,
         'layer_size': 16,
         'output_shape': num_vars,
@@ -93,9 +154,9 @@ def main(cfg: Configs):
 
     encoder_args = encoder_args | asdict(cfg.model_args)
     dae = DynamicAE(
-        encoder=MLP,
-        decoder=MLP,
-        latent_dim=cfg.trainer_args.latent_dim,
+        encoder=MLPEncoder,
+        decoder=MLPDecoder,
+        latent_dim=cfg.trainer_args.latent_dim + 3,
         optimizer_fn=torch.optim.Adam,
         optimizer_kwargs={'lr': cfg.trainer_args.encoder_lr},
         trainer=trainer,
