@@ -20,6 +20,8 @@ class TrainerArgs:
     "Whether to apply spectral normalization to the linear layer"
     regularization: float
     "Regularization strength for the spectral loss"
+    loss: Literal["kl_DV", "kl_NWJ", "l2"] = "l2"
+    "Loss function to use"
     min_encoder_lr: float | None = None
     "Minimum learning rate for the encoder, used in cosine annealing scheduler. If None, no scheduler is used."
     normalize_latents: Literal["simnorm", "euclidean"] | None = "simnorm"
@@ -174,12 +176,12 @@ defaults = {
             trainer_args=TrainerArgs(
                 latent_dim=8,
                 encoder_lr=1e-4,
-                linear_lr=1e-3, #not used in VAMPNets
+                linear_lr=1e-3,  # not used in VAMPNets
                 epochs=100,
                 batch_size=512,
-                max_grad_norm=None, #not used in VAMPNets
-                normalize_lin=False, #not used in VAMPNets
-                regularization=0.0, #not used in VAMPNets
+                max_grad_norm=None,  # not used in VAMPNets
+                normalize_lin=False,  # not used in VAMPNets
+                regularization=0.0,  # not used in VAMPNets
             ),
             model_args=MLPModelArgs(),
             data_args=Lorenz63DataArgs(lagtime=1, history_len=0),
@@ -194,12 +196,12 @@ defaults = {
             trainer_args=TrainerArgs(
                 latent_dim=8,
                 encoder_lr=1e-3,
-                linear_lr=1e-3, #not used in DAE
+                linear_lr=1e-3,  # not used in DAE
                 epochs=100,
                 batch_size=512,
-                max_grad_norm=None, #not used in DAE
-                normalize_lin=False, #not used in DAE
-                regularization=0.0, #not used in DAE
+                max_grad_norm=None,  # not used in DAE
+                normalize_lin=False,  # not used in DAE
+                regularization=0.0,  # not used in DAE
             ),
             model_args=MLPModelArgs(),
             data_args=Lorenz63DataArgs(lagtime=1, history_len=0),

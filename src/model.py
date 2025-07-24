@@ -10,7 +10,7 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from src.configs import TrainerArgs
-from src.loss import RegSpectralLoss
+from src.loss import Loss
 from src.modules import EMACovariance, EuclideanNorm
 from src.utils import effective_rank, lin_svdvals
 
@@ -56,7 +56,7 @@ class EvolutionOperator(lightning.LightningModule):
         self._samples = 0
         if self.trainer_args.normalize_lin:
             self.linear = spectral_norm(self.linear)
-        self.loss = RegSpectralLoss(reg=trainer_args.regularization)
+        self.loss = Loss(reg=trainer_args.regularization, loss=trainer_args.loss)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.forward_nn(x)
