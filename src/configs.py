@@ -20,7 +20,7 @@ class TrainerArgs:
     "Whether to apply spectral normalization to the linear layer"
     regularization: float
     "Regularization strength for the spectral loss"
-    loss: Literal["kl_DV", "kl_NWJ", "l2"] = "l2"
+    loss: Literal["kl_DV", "kl_NWJ", "l2", "dpnets"] = "l2"
     "Loss function to use"
     min_encoder_lr: float | None = None
     "Minimum learning rate for the encoder, used in cosine annealing scheduler. If None, no scheduler is used."
