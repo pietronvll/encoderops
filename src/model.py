@@ -30,7 +30,7 @@ class EvolutionOperator(lightning.LightningModule):
 
         self.forecast = trainer_args.forecast
         if self.forecast:
-            d = trainer_args.latent_dim + encoder_args["input_shape"]
+            d = int(trainer_args.latent_dim + encoder_args["input_shape"])
         else:
             d = trainer_args.latent_dim
 
@@ -49,7 +49,7 @@ class EvolutionOperator(lightning.LightningModule):
             self.normalizer = torch.nn.Sequential(batch_norm, euclidnorm)
         else:  # None
             self.normalizer = torch.nn.Sequential(batch_norm)
-
+        
         self.linear = torch.nn.Linear(d, d, bias=False)
 
         self._global_step = 0
@@ -82,7 +82,7 @@ class EvolutionOperator(lightning.LightningModule):
         return timescales
 
     @torch.no_grad()
-    def get_transfer_operator(self, reg: float = 1e-4):
+    def get_transfer_operator(self, reg: float = 1e-4) -> torch.Tensor:
         if self.forecast:
             d = self.trainer_args.latent_dim + self.encoder_args["input_shape"]
         else:
@@ -95,7 +95,9 @@ class EvolutionOperator(lightning.LightningModule):
     def training_step(self, train_batch, batch_idx):
         x_t, x_lag = self.encoder.prepare_batch(train_batch)
         f_t = self.forward_nn(x_t)
-        f_lag = self.forward_nn(x_lag, lagged=True)
+        # Not ideal, but fast
+        use_linear = self.trainer_args.loss in ["kl_DV", "kl_NWJ", "l2"]
+        f_lag = self.forward_nn(x_lag, lagged=use_linear)
         # opt
         # opt:zero_grad
         for opt in self.optimizers():
@@ -164,7 +166,8 @@ class EvolutionOperator(lightning.LightningModule):
     def validation_step(self, batch, batch_idx):
         x_t, x_lag = self.encoder.prepare_batch(batch)
         f_t = self.forward_nn(x_t)
-        f_lag = self.forward_nn(x_lag, lagged=True)
+        use_linear = self.trainer_args.loss in ["kl_DV", "kl_NWJ", "l2"]
+        f_lag = self.forward_nn(x_lag, lagged=use_linear)
         loss = self.loss(f_t, f_lag)
         loss_noreg = self.loss.noreg(f_t, f_lag)
 

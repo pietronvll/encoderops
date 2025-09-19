@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --account=<your_account>     # project name
+#SBATCH --account=IscrC_LR4LSDS     # project name
 #SBATCH --partition=boost_usr_prod  # partition to be used
 #SBATCH --time 4:00:00              # format: HH:MM:SS
 #SBATCH --nodes=1                   # node
@@ -11,4 +11,4 @@
 export OMP_NUM_THREADS=1
 
 echo "========== trp-cage training script =========="
-uv run --env-file=.env -- srun python -m exps.trpcage.trainer trp-cage --trainer_args.batch_size=512  --offline
+uv run --env-file=.env -- srun python -m exps.trpcage.trainer trp-cage --trainer_args.batch_size=512  --offline --trainer-args.loss=vampnets

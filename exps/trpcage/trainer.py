@@ -33,6 +33,7 @@ def main(cfg: Configs):
     trainer = Trainer(
         logger=wandb_logger,
         callbacks=[checkpoint_callback],
+        strategy="ddp" if cfg.trainer_args.loss in ["kl_DV", "kl_NWJ", "l2"] else "ddp_find_unused_parameters_true",
         accelerator="cuda",
         devices=cfg.num_devices,
         max_epochs=cfg.trainer_args.epochs,
