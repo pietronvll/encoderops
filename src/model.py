@@ -96,7 +96,7 @@ class EvolutionOperator(lightning.LightningModule):
         x_t, x_lag = self.encoder.prepare_batch(train_batch)
         f_t = self.forward_nn(x_t)
         # Not ideal, but fast
-        use_linear = self.trainer_args.loss in ["kl_DV", "kl_NWJ", "l2"]
+        use_linear = self.trainer_args.loss in ["kl_DV", "kl_NWJ", "l2", "joint_l2", "seq_l2"]
         f_lag = self.forward_nn(x_lag, lagged=use_linear)
         # opt
         # opt:zero_grad
@@ -166,7 +166,7 @@ class EvolutionOperator(lightning.LightningModule):
     def validation_step(self, batch, batch_idx):
         x_t, x_lag = self.encoder.prepare_batch(batch)
         f_t = self.forward_nn(x_t)
-        use_linear = self.trainer_args.loss in ["kl_DV", "kl_NWJ", "l2"]
+        use_linear = self.trainer_args.loss in ["kl_DV", "kl_NWJ", "l2", "joint_l2", "seq_l2"]
         f_lag = self.forward_nn(x_lag, lagged=use_linear)
         loss = self.loss(f_t, f_lag)
         loss_noreg = self.loss.noreg(f_t, f_lag)

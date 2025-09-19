@@ -4,6 +4,72 @@ from typing import Literal
 import linear_operator_learning.nn.functional as F
 import torch
 from torch import Tensor
+import numpy as np
+
+def joint_LoRA(X: Tensor, Y: Tensor) -> Tensor:
+    assert X.shape == Y.shape
+    assert X.ndim == 2
+    n_modes = X.shape[1]
+    vec_mask, mat_mask = get_joint_nesting_masks(
+        weights=np.ones(n_modes) / n_modes, 
+    )
+    corr_term = -2 * (vec_mask.to(X.device) * X * Y).mean(0).sum()
+    # \sum_{i=1}^k \sum_{j=1}^k <f_i, f_j> <g_i, g_j>
+    # = tr ( cov (f_{1:k}) * cov(g_{1:k}) )
+    M_x = compute_second_moment(X)
+    M_y = compute_second_moment(Y)
+    metric_term = (mat_mask.to(X.device) * M_x * M_y).sum()
+    return corr_term + metric_term
+
+def seq_LoRA(X: Tensor, Y: Tensor) -> Tensor:
+    assert X.shape == Y.shape
+    assert X.ndim == 2
+    corr_term = -2 * (X * Y).mean(0).sum()
+    # \sum_{i=1}^k \sum_{j=1}^k <f_i, f_j> <g_i, g_j>
+    # = tr ( cov (f_{1:k}) * cov(g_{1:k}) )
+    M_f = compute_second_moment(X, seq_nesting=True)
+    M_g = compute_second_moment(Y, seq_nesting=True)
+    metric_term = (M_f * M_g).sum()
+    return corr_term + metric_term
+
+def compute_second_moment(
+        f: torch.Tensor,
+        g: torch.Tensor | None = None,
+        seq_nesting: bool = False
+    ) -> torch.Tensor:
+    """
+    compute (optionally sequentially nested) second-moment matrix
+        M_ij = <f_i, g_j>
+    with partial stop-gradient handling when seq_nesting is True.
+
+    args
+    ----
+    f : (n, k) tensor
+    g : (n, k) tensor or None
+    seq_nesting : bool           
+    """
+    if g is None:
+        g = f
+    n = f.shape[0]
+    if not seq_nesting:
+        return (f.T @ g) / n
+    else:
+        # partial stop gradient
+        # lower-triangular: <f_i, sg[g_j]> for i > j
+        lower = torch.tril(f.T @ g.detach(), diagonal=-1)
+        # upper-triangular: <sg[f_i], g_j> for i < j
+        upper = torch.triu(f.detach().T @ g, diagonal=+1)
+        # diagonal:         <f_i, g_i>     (no stop-grad)
+        diag  = torch.diag((f * g).sum(dim=0))
+        return (lower + diag + upper) / n
+
+def get_joint_nesting_masks(weights: np.ndarray) -> tuple[torch.Tensor, torch.Tensor]:
+    vector_mask = list(np.cumsum(list(weights)[::-1])[::-1])
+    vector_mask = torch.tensor(np.array(vector_mask)).float()
+    matrix_mask = torch.minimum(
+        vector_mask.unsqueeze(1), vector_mask.unsqueeze(1).T
+    ).float()
+    return vector_mask, matrix_mask
 
 
 def DV_contrastive_loss(X: Tensor, Y: Tensor) -> Tensor:
