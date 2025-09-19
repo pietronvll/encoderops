@@ -100,7 +100,7 @@ def NWJ_contrastive_loss(X: Tensor, Y: Tensor) -> Tensor:
 
 class Loss(torch.nn.Module):
     def __init__(
-        self, reg: float = 1e-5, loss: Literal["kl_DV", "kl_NWJ", "l2", "dpnets", "vampnets"] = "l2"
+        self, reg: float = 1e-5, loss: Literal["kl_DV", "kl_NWJ", "l2", "dpnets", "vampnets", "joint_l2", "seq_l2"] = "l2"
     ):
         super().__init__()
         self.reg = reg
@@ -125,6 +125,10 @@ class Loss(torch.nn.Module):
             return F.dp_loss(inputs, lagged, center_covariances=False)
         elif self.loss == "vampnets":
             return F.vamp_loss(inputs, lagged, center_covariances=False)
+        elif self.loss == "joint_l2":
+            return joint_LoRA(inputs, lagged)
+        elif self.loss == "seq_l2":
+            return seq_LoRA(inputs, lagged)
         else:
             raise ValueError(f"Unknown loss: {self.loss}")
 
