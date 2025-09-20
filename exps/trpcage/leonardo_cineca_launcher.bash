@@ -11,4 +11,4 @@
 export OMP_NUM_THREADS=1
 
 echo "========== trp-cage training script =========="
-uv run --env-file=.env -- srun python -m exps.trpcage.trainer trp-cage --trainer_args.batch_size=512  --offline --trainer-args.loss=seq_l2
+uv run --env-file=.env -- srun python -m exps.trpcage.trainer trp-cage --trainer_args.batch_size=512  --offline --trainer-args.loss=seq_l2 --trainer-args.no-share-encoder
