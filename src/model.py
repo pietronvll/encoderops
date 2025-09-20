@@ -38,6 +38,7 @@ class EvolutionOperator(lightning.LightningModule):
         batch_norm = torch.nn.BatchNorm1d(
             num_features=trainer_args.latent_dim, affine=False
         )
+
         self.covariances = EMACovariance(feature_dim=d)
 
         if trainer_args.normalize_latents == "simnorm":
@@ -49,7 +50,22 @@ class EvolutionOperator(lightning.LightningModule):
             self.normalizer = torch.nn.Sequential(batch_norm, euclidnorm)
         else:  # None
             self.normalizer = torch.nn.Sequential(batch_norm)
-        
+
+        if not self.trainer_args.share_encoder:
+            self.encoder_lag = encoder_cls(**encoder_args)
+            batch_norm_lag = torch.nn.BatchNorm1d(
+                num_features=trainer_args.latent_dim, affine=False
+            )
+            if trainer_args.normalize_latents == "simnorm":
+                assert trainer_args.simnorm_dim > 0
+                simnorm = SimNorm(dim=trainer_args.simnorm_dim)
+                self.normalizer_lag = torch.nn.Sequential(batch_norm_lag, simnorm)
+            elif trainer_args.normalize_latents == "euclidean":
+                euclidnorm = EuclideanNorm()
+                self.normalizer_lag = torch.nn.Sequential(batch_norm_lag, euclidnorm)
+            else:  # None
+                self.normalizer_lag = torch.nn.Sequential(batch_norm_lag)
+
         self.linear = torch.nn.Linear(d, d, bias=False)
 
         self._global_step = 0
@@ -62,12 +78,22 @@ class EvolutionOperator(lightning.LightningModule):
         return self.forward_nn(x)
 
     def forward_nn(self, x: torch.Tensor, lagged: bool = False) -> torch.Tensor:
-        x_enc = self.encoder(x)
-        x_enc = self.normalizer(x_enc)
-        if self.forecast:
-            x_enc = torch.cat([x_enc, x], dim=-1)
-        if lagged:
-            x_enc = self.linear(x_enc)
+        if self.trainer_args.share_encoder:
+            x_enc = self.encoder(x)
+            x_enc = self.normalizer(x_enc)
+            if self.forecast:
+                x_enc = torch.cat([x_enc, x], dim=-1)
+            if lagged:
+                x_enc = self.linear(x_enc)
+        else:
+            if not lagged:
+                x_enc = self.encoder(x)
+                x_enc = self.normalizer(x_enc)
+            else:
+                x_enc = self.encoder_lag(x)
+                x_enc = self.normalizer_lag(x_enc)
+            if self.forecast:
+                x_enc = torch.cat([x_enc, x], dim=-1)
         return x_enc
 
     @torch.no_grad()
@@ -95,9 +121,7 @@ class EvolutionOperator(lightning.LightningModule):
     def training_step(self, train_batch, batch_idx):
         x_t, x_lag = self.encoder.prepare_batch(train_batch)
         f_t = self.forward_nn(x_t)
-        # Not ideal, but fast
-        use_linear = self.trainer_args.loss in ["kl_DV", "kl_NWJ", "l2", "joint_l2", "seq_l2"]
-        f_lag = self.forward_nn(x_lag, lagged=use_linear)
+        f_lag = self.forward_nn(x_lag, lagged=True)
         # opt
         # opt:zero_grad
         for opt in self.optimizers():
@@ -111,6 +135,12 @@ class EvolutionOperator(lightning.LightningModule):
             torch.nn.utils.clip_grad_norm_(
                 self.encoder.parameters(), max_norm=self.trainer_args.max_grad_norm
             )
+            if not self.trainer_args.share_encoder:
+                torch.nn.utils.clip_grad_norm_(
+                    self.encoder_lag.parameters(),
+                    max_norm=self.trainer_args.max_grad_norm,
+                )
+            
         # opt:step
         for opt in self.optimizers():
             opt.step()
@@ -166,8 +196,7 @@ class EvolutionOperator(lightning.LightningModule):
     def validation_step(self, batch, batch_idx):
         x_t, x_lag = self.encoder.prepare_batch(batch)
         f_t = self.forward_nn(x_t)
-        use_linear = self.trainer_args.loss in ["kl_DV", "kl_NWJ", "l2", "joint_l2", "seq_l2"]
-        f_lag = self.forward_nn(x_lag, lagged=use_linear)
+        f_lag = self.forward_nn(x_lag, lagged=True)
         loss = self.loss(f_t, f_lag)
         loss_noreg = self.loss.noreg(f_t, f_lag)
 
@@ -197,11 +226,18 @@ class EvolutionOperator(lightning.LightningModule):
         """
         Initialize the optimizer based on self._optimizer_name and self.optimizer_kwargs.
         """
+        if self.trainer_args.share_encoder:
+            encoder_opt = AdamW(
+                self.encoder.parameters(),
+                lr=self.trainer_args.encoder_lr,
+            )
+        else:
+            encoder_opt = AdamW(
+                list(self.encoder.parameters())
+                + list(self.encoder_lag.parameters()),
+                lr=self.trainer_args.encoder_lr,
+            )
 
-        encoder_opt = AdamW(
-            self.encoder.parameters(),
-            lr=self.trainer_args.encoder_lr,
-        )
         linear_opt = AdamW(self.linear.parameters(), lr=self.trainer_args.linear_lr)
 
         configuration = (
