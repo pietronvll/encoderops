@@ -2,16 +2,17 @@ import math
 from typing import Literal
 
 import linear_operator_learning.nn.functional as F
+import numpy as np
 import torch
 from torch import Tensor
-import numpy as np
+
 
 def joint_LoRA(X: Tensor, Y: Tensor) -> Tensor:
     assert X.shape == Y.shape
     assert X.ndim == 2
     n_modes = X.shape[1]
     vec_mask, mat_mask = get_joint_nesting_masks(
-        weights=np.ones(n_modes) / n_modes, 
+        weights=np.ones(n_modes) / n_modes,
     )
     corr_term = -2 * (vec_mask.to(X.device) * X * Y).mean(0).sum()
     # \sum_{i=1}^k \sum_{j=1}^k <f_i, f_j> <g_i, g_j>
@@ -20,6 +21,7 @@ def joint_LoRA(X: Tensor, Y: Tensor) -> Tensor:
     M_y = compute_second_moment(Y)
     metric_term = (mat_mask.to(X.device) * M_x * M_y).sum()
     return corr_term + metric_term
+
 
 def seq_LoRA(X: Tensor, Y: Tensor) -> Tensor:
     assert X.shape == Y.shape
@@ -32,11 +34,10 @@ def seq_LoRA(X: Tensor, Y: Tensor) -> Tensor:
     metric_term = (M_f * M_g).sum()
     return corr_term + metric_term
 
+
 def compute_second_moment(
-        f: torch.Tensor,
-        g: torch.Tensor | None = None,
-        seq_nesting: bool = False
-    ) -> torch.Tensor:
+    f: torch.Tensor, g: torch.Tensor | None = None, seq_nesting: bool = False
+) -> torch.Tensor:
     """
     compute (optionally sequentially nested) second-moment matrix
         M_ij = <f_i, g_j>
@@ -46,7 +47,7 @@ def compute_second_moment(
     ----
     f : (n, k) tensor
     g : (n, k) tensor or None
-    seq_nesting : bool           
+    seq_nesting : bool
     """
     if g is None:
         g = f
@@ -60,8 +61,9 @@ def compute_second_moment(
         # upper-triangular: <sg[f_i], g_j> for i < j
         upper = torch.triu(f.detach().T @ g, diagonal=+1)
         # diagonal:         <f_i, g_i>     (no stop-grad)
-        diag  = torch.diag((f * g).sum(dim=0))
+        diag = torch.diag((f * g).sum(dim=0))
         return (lower + diag + upper) / n
+
 
 def get_joint_nesting_masks(weights: np.ndarray) -> tuple[torch.Tensor, torch.Tensor]:
     vector_mask = list(np.cumsum(list(weights)[::-1])[::-1])
@@ -100,7 +102,11 @@ def NWJ_contrastive_loss(X: Tensor, Y: Tensor) -> Tensor:
 
 class Loss(torch.nn.Module):
     def __init__(
-        self, reg: float = 1e-5, loss: Literal["kl_DV", "kl_NWJ", "l2", "dpnets", "vampnets", "joint_l2", "seq_l2"] = "l2"
+        self,
+        reg: float = 1e-5,
+        loss: Literal[
+            "kl_DV", "kl_NWJ", "l2", "dpnets", "vampnets", "joint_l2", "seq_l2"
+        ] = "l2",
     ):
         super().__init__()
         self.reg = reg
@@ -122,7 +128,11 @@ class Loss(torch.nn.Module):
         elif self.loss == "kl_NWJ":
             return NWJ_contrastive_loss(inputs, lagged)
         elif self.loss == "dpnets":
-            return F.dp_loss(inputs, lagged, center_covariances=False)
+            reg = F.orthonormal_logfro_reg(inputs)
+            reg_lagged = F.orthonormal_logfro_reg(lagged)
+            return F.dp_loss(inputs, lagged, center_covariances=False) + 0.5 * (
+                reg + reg_lagged
+            )
         elif self.loss == "vampnets":
             return F.vamp_loss(inputs, lagged, center_covariances=False)
         elif self.loss == "joint_l2":
