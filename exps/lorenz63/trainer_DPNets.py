@@ -1,6 +1,5 @@
 import torch
 import tyro
-
 from lightning import Trainer
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
@@ -10,13 +9,15 @@ from src.data import Lorenz63DataModule
 from src.modules import MLP
 from src.utils import EpochTimerCallback
 
-from exps.lorenz63.dae import DynamicAE
+from kooplearn.models.feature_maps.nn import NNFeatureMap
 from kooplearn.data import traj_to_contexts
+from kooplearn.nn import DPLoss
 from torch.utils.data import DataLoader
 from kooplearn.nn.data import collate_context_dataset
-from dataclasses import asdict
-from linear_operator_learning.nn import MLP
 
+from dataclasses import asdict
+
+from linear_operator_learning.nn import MLP
 
 class MLPEncoder(torch.nn.Module):
     def __init__(
@@ -47,37 +48,6 @@ class MLPEncoder(torch.nn.Module):
         x_enc = self.encoder(x)
         x_enc = torch.cat([x_enc, x], dim=-1)
         return x_enc
-    
-    
-class MLPDecoder(torch.nn.Module):
-    def __init__(
-        self,
-        input_shape,
-        n_hidden,
-        layer_size,
-        output_shape,
-        dropout=0.0,
-        activation=torch.nn.ReLU,
-        iterative_whitening=False,
-        bias=True,
-    ):
-        super(MLPDecoder, self).__init__()
-
-        self.decoder = MLP(
-            input_shape=input_shape,
-            n_hidden=n_hidden,
-            layer_size=layer_size,
-            output_shape=output_shape,
-            dropout=dropout,
-            activation=activation,
-            iterative_whitening=iterative_whitening,
-            bias=bias,
-        )
-        
-    def forward(self, x):
-        x_enc = self.decoder(x)
-        return x_enc
-
 
 def main(cfg: Configs):
     datamodule = Lorenz63DataModule(
@@ -111,8 +81,8 @@ def main(cfg: Configs):
         entity=cfg.wandb_entity,
         offline=cfg.offline,
         save_dir="./logs",
-        tags=["DAE"],
-        name=f"DAE_rep{cfg.trainer_args.seed}",    
+        tags=["DPNets"],
+        name=f"DPNets_rep{cfg.trainer_args.seed}",    
     )
 
     checkpoint_callback = ModelCheckpoint(
@@ -134,40 +104,29 @@ def main(cfg: Configs):
     # Model
     encoder_args = {
         "input_shape": num_vars * (cfg.data_args.history_len + 1),
-        'n_hidden': 2,
-        'layer_size': 16,
         "output_shape": cfg.trainer_args.latent_dim,
         "dropout": 0.0,
         "activation": torch.nn.ReLU,
         "iterative_whitening": False,
         "bias": True,
     }
-    decoder_args = {
-        'input_shape': cfg.trainer_args.latent_dim + 3,
-        'n_hidden': 2,
-        'layer_size': 16,
-        'output_shape': num_vars,
-        "dropout": 0.0,
-        "activation": torch.nn.ReLU,
-        "iterative_whitening": False,
-        "bias": True,
-    }
-
+    loss_args = {
+        'relaxed': True,
+        'center_covariances': True
+        }
     encoder_args = encoder_args | asdict(cfg.model_args)
-    dae = DynamicAE(
-        encoder=MLPEncoder,
-        decoder=MLPDecoder,
-        latent_dim=cfg.trainer_args.latent_dim + 3,
-        optimizer_fn=torch.optim.Adam,
-        optimizer_kwargs={'lr': cfg.trainer_args.encoder_lr},
-        trainer=trainer,
-        loss_weights={"rec": 1.0, "pred": 1.0, "lin": 1.0},
+    feature_map = NNFeatureMap(
+        MLPEncoder,
+        DPLoss,
+        torch.optim.AdamW,
+        trainer,
         encoder_kwargs=encoder_args,
-        decoder_kwargs=decoder_args,
-        use_lstsq_for_evolution=False,
-        seed=cfg.trainer_args.seed)
-    dae.fit(train_dl, val_dl)
-    dae.save(checkpoint_callback.dirpath + f"/last.pt")
+        loss_kwargs=loss_args,
+        optimizer_kwargs={'lr': cfg.trainer_args.encoder_lr},
+        seed=cfg.trainer_args.seed,
+    )    
+    feature_map.fit(train_dl, val_dl)
+    feature_map.save(checkpoint_callback.dirpath + f"/last.pt")
 
 if __name__ == "__main__":
     config = tyro.extras.overridable_config_cli(defaults)

@@ -2,12 +2,13 @@ import torch
 import tyro
 
 from lightning import Trainer
-from lightning.pytorch.callbacks import ModelCheckpoint, Timer
+from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 
 from src.configs import Configs, defaults
 from src.data import Lorenz63DataModule
 from src.modules import MLP
+from src.utils import EpochTimerCallback
 
 from exps.lorenz63.cae import ConsistentAE
 from kooplearn.data import traj_to_contexts
@@ -118,7 +119,7 @@ def main(cfg: Configs):
         every_n_epochs=25, save_top_k=-1, save_last=True
     )
     # Timer
-    timer = Timer()
+    timer = EpochTimerCallback()
     # Trainer
     trainer = Trainer(
         logger=wandb_logger,
@@ -171,8 +172,6 @@ def main(cfg: Configs):
         decoder_kwargs=decoder_args,
         seed=cfg.trainer_args.seed)
     dae.fit(train_dl, val_dl)
-    runtime = timer.time_elapsed("train")
-    wandb_logger.experiment.log({"runtime": runtime})
     dae.save(checkpoint_callback.dirpath + f"/last.pt")
 
 if __name__ == "__main__":

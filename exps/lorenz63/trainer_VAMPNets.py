@@ -1,16 +1,14 @@
 import torch
-
-import torch
 import tyro
 from lightning import Trainer
-from lightning.pytorch.callbacks import ModelCheckpoint, Timer
+from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 
 from src.configs import Configs, defaults
 from src.data import Lorenz63DataModule
 from src.modules import MLP
+from src.utils import EpochTimerCallback
 
-from kooplearn.models import Nonlinear
 from kooplearn.models.feature_maps.nn import NNFeatureMap
 from kooplearn.data import traj_to_contexts
 from kooplearn.nn import VAMPLoss
@@ -91,7 +89,7 @@ def main(cfg: Configs):
         every_n_epochs=25, save_top_k=-1, save_last=True
     )
     # Timer
-    timer = Timer()
+    timer = EpochTimerCallback()
     # Trainer
     trainer = Trainer(
         logger=wandb_logger,
@@ -114,7 +112,7 @@ def main(cfg: Configs):
     }
     loss_args = {
         'schatten_norm': 2,
-        'center_covariances': False
+        'center_covariances': True
         }
     encoder_args = encoder_args | asdict(cfg.model_args)
     feature_map = NNFeatureMap(
@@ -128,8 +126,6 @@ def main(cfg: Configs):
         seed=cfg.trainer_args.seed,
     )    
     feature_map.fit(train_dl, val_dl)
-    runtime = timer.time_elapsed("train")
-    wandb_logger.experiment.log({"runtime": runtime})
     feature_map.save(checkpoint_callback.dirpath + f"/last.pt")
 
 if __name__ == "__main__":

@@ -1,17 +1,17 @@
-# uv run python -m exps.trpcage.trainer trp-cage --help
-
 from dataclasses import asdict
 
 import torch
 import tyro
+
 from lightning.pytorch import Trainer, seed_everything
-from lightning.pytorch.callbacks import ModelCheckpoint, Timer
+from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 
 from src.configs import Configs, defaults
 from src.data import Lorenz63DataModule
 from src.model import EvolutionOperator
 from src.modules import MLP
+from src.utils import EpochTimerCallback
 
 
 def main(cfg: Configs):
@@ -35,7 +35,7 @@ def main(cfg: Configs):
         every_n_epochs=25, save_top_k=-1, save_last=True
     )
     # Timer
-    timer = Timer()
+    timer = EpochTimerCallback()
     # Trainer
     trainer = Trainer(
         logger=wandb_logger,
@@ -59,8 +59,6 @@ def main(cfg: Configs):
     encoder_args = encoder_args | asdict(cfg.model_args)
     model = EvolutionOperator(MLP, encoder_args, cfg.trainer_args)
     trainer.fit(model, datamodule=datamodule)
-    runtime = timer.time_elapsed("train")
-    wandb_logger.experiment.log({"runtime": runtime})
 
 
 if __name__ == "__main__":
