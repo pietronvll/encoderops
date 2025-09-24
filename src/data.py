@@ -29,6 +29,7 @@ from src.configs import (
     SSTDataArgs,
     TrainerArgs,
 )
+from src.utils import FastTensorDataLoader
 
 
 def traj_to_confs(traj: mdtraj.Trajectory, system_selection: str | None = None):
@@ -425,30 +426,54 @@ class Lorenz63DataModule(LightningDataModule):
         )
 
     def train_dataloader(self):
-        return DataLoader(
-            self.train_dataset,
+        idx_X_arr, idx_Y_arr = zip(*self.train_dataset.indices)  # shape: (N, history_len+1)
+        idx_X_arr = np.array(idx_X_arr)
+        idx_Y_arr = np.array(idx_Y_arr)
+
+        X = torch.from_numpy(self.train_dataset.data[idx_X_arr]).float()
+        Y = torch.from_numpy(self.train_dataset.data[idx_Y_arr]).float()
+
+        X = X.reshape((-1, *X.shape[2:]))  # (N, H, dim)
+        Y = Y.reshape((-1, *Y.shape[2:]))  # (N, H, dim)
+        return FastTensorDataLoader(
+            X,
+            Y,
             batch_size=self.args.batch_size,
-            shuffle=True,
-            num_workers=self.num_workers,
-            persistent_workers=True,
+            shuffle=True
         )
 
     def val_dataloader(self):
-        return DataLoader(
-            self.val_dataset,
+        idx_X_arr, idx_Y_arr = zip(*self.val_dataset.indices)  # shape: (N, history_len+1)
+        idx_X_arr = np.array(idx_X_arr)
+        idx_Y_arr = np.array(idx_Y_arr)
+
+        X = torch.from_numpy(self.val_dataset.data[idx_X_arr]).float()
+        Y = torch.from_numpy(self.val_dataset.data[idx_Y_arr]).float()
+
+        X = X.reshape((-1, *X.shape[2:]))  # (N, H, dim)
+        Y = Y.reshape((-1, *Y.shape[2:]))  # (N, H, dim)
+        return FastTensorDataLoader(
+            X,
+            Y,
             batch_size=len(self.val_dataset),
-            shuffle=False,
-            num_workers=1,
-            persistent_workers=True,
+            shuffle=False
         )
 
     def test_dataloader(self):
-        return DataLoader(
-            self.test_dataset,
+        idx_X_arr, idx_Y_arr = zip(*self.test_dataset.indices)  # shape: (N, history_len+1)
+        idx_X_arr = np.array(idx_X_arr)
+        idx_Y_arr = np.array(idx_Y_arr)
+
+        X = torch.from_numpy(self.test_dataset.data[idx_X_arr]).float()
+        Y = torch.from_numpy(self.test_dataset.data[idx_Y_arr]).float()
+
+        X = X.reshape((-1, *X.shape[2:]))  # (N, H, dim)
+        Y = Y.reshape((-1, *Y.shape[2:]))  # (N, H, dim)
+        return FastTensorDataLoader(
+            X,
+            Y,
             batch_size=len(self.test_dataset),
-            shuffle=False,
-            num_workers=1,
-            persistent_workers=True,
+            shuffle=False
         )
 
 
@@ -771,12 +796,19 @@ class Lorenz63Dataset(Dataset):
                 raise ValueError(
                     "data_path environment variable is not set, and data_path is not provided."
                 )
-
-        dataset_path = Path(data_path) / "lorenz63/lorenz63_dataset.nc"
-        ds = xr.open_dataset(dataset_path)
+            
+        ds = xr.open_dataset(data_path)
         self.ds = ds.sel(time=ds.split == split)
-        self.data = self.ds["trajectory"].values
-        self.time = self.ds["time"].values
+        self.data = self.ds["trajectory"].values.astype("float32")
+        self.time = self.ds["time"].values.astype("float32")
+
+        # Precompute valid (x, y) index ranges
+        self.indices = [
+            ([(i - h + self.history_len) for h in range(self.history_len + 1)],
+             [(i - h + self.history_len + self.lagtime) for h in range(self.history_len + 1)])
+            for i in range(len(self.ds.time) - self.history_len - self.lagtime)
+        ]
+
         if torch.distributed.is_initialized():
             if torch.distributed.get_rank() == 0:
                 logger.info(
@@ -788,7 +820,7 @@ class Lorenz63Dataset(Dataset):
             )
 
     def __len__(self):
-        return self.num_samples
+        return len(self.indices)
 
     @property
     def num_variables(self):
@@ -799,18 +831,13 @@ class Lorenz63Dataset(Dataset):
         return len(self.ds.time) - self.history_len - self.lagtime
 
     def _load_sample(self, idx: int):
-        x_selectors = [idx - h + self.history_len for h in range(self.history_len + 1)]
-        y_selectors = [x_id + self.lagtime for x_id in x_selectors]
+        x_selectors, y_selectors = self.indices[idx]
         x = self.data[x_selectors]
         y = self.data[y_selectors]
 
-        x = x.reshape((-1, *x.shape[2:]))
-        y = y.reshape((-1, *y.shape[2:]))
-
-        x = torch.from_numpy(x).float()
-        y = torch.from_numpy(y).float()
-
-        return x, y, str(self.time[idx + self.history_len])
+        x = torch.from_numpy(x.reshape((-1, *x.shape[2:])))
+        y = torch.from_numpy(y.reshape((-1, *y.shape[2:])))
+        return x, y
 
     def __getitem__(self, idx):
         if isinstance(idx, slice):
@@ -818,5 +845,6 @@ class Lorenz63Dataset(Dataset):
         elif isinstance(idx, (list, tuple)):
             raise NotImplementedError
 
-        x, y, t = self._load_sample(idx)
-        return {"x": x, "y": y, "time": t}
+        x, y = self._load_sample(idx)
+        return x, y
+    
