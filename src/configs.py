@@ -6,19 +6,19 @@ from typing import Literal, Tuple
 class TrainerArgs:
     latent_dim: int
     "Dimension of the latent space"
-    encoder_lr: float
+    encoder_lr: float = 1e-3
     "Learning rate for the encoder"
-    linear_lr: float
+    linear_lr: float = 1e-3
     "Learning rate for the linear (transfer operator) layer"
-    epochs: int
+    epochs: int = 100
     "Number of training epochs"
-    batch_size: int
+    batch_size: int = 64
     "Batch size for training"
-    max_grad_norm: float | None
+    max_grad_norm: float | None = 0.2
     "Maximum gradient norm for gradient clipping. If None, no clipping is performed"
-    normalize_lin: bool
+    normalize_lin: bool = True
     "Whether to apply spectral normalization to the linear layer"
-    regularization: float
+    regularization: float = 0.0
     "Regularization strength for the spectral loss"
     loss: Literal[
         "kl_DV", "kl_NWJ", "l2", "dpnets", "vampnets", "joint_l2", "seq_l2"
@@ -180,15 +180,27 @@ defaults = {
             trainer_args=TrainerArgs(
                 latent_dim=8,
                 encoder_lr=1e-4,
-                linear_lr=1e-3,  # not used in VAMPNets
                 epochs=100,
                 batch_size=512,
-                max_grad_norm=None,  # not used in VAMPNets
-                normalize_lin=False,  # not used in VAMPNets
-                regularization=0.0,  # not used in VAMPNets
             ),
             model_args=MLPModelArgs(),
-            data_args=Lorenz63DataArgs(lagtime=1, history_len=0),
+            data_args=Lorenz63DataArgs(lagtime=10, history_len=0),
+            wandb_project="encoderops-lorenz63",
+            wandb_entity="csml",
+            num_devices=1,
+        ),
+    ),
+    "l63-dpnets": (
+        "Lorenz63 - DPNets",
+        Configs(
+            trainer_args=TrainerArgs(
+                latent_dim=8,
+                encoder_lr=1e-2,
+                epochs=100,
+                batch_size=512,
+            ),
+            model_args=MLPModelArgs(),
+            data_args=Lorenz63DataArgs(lagtime=10, history_len=0),
             wandb_project="encoderops-lorenz63",
             wandb_entity="csml",
             num_devices=1,
@@ -200,15 +212,11 @@ defaults = {
             trainer_args=TrainerArgs(
                 latent_dim=8,
                 encoder_lr=1e-3,
-                linear_lr=1e-3,  # not used in DAE
                 epochs=100,
                 batch_size=512,
-                max_grad_norm=None,  # not used in DAE
-                normalize_lin=False,  # not used in DAE
-                regularization=0.0,  # not used in DAE
             ),
             model_args=MLPModelArgs(),
-            data_args=Lorenz63DataArgs(lagtime=1, history_len=0),
+            data_args=Lorenz63DataArgs(lagtime=10, history_len=0),
             wandb_project="encoderops-lorenz63",
             wandb_entity="csml",
             num_devices=1,
@@ -220,15 +228,11 @@ defaults = {
             trainer_args=TrainerArgs(
                 latent_dim=8,
                 encoder_lr=1e-3,
-                linear_lr=1e-3,  # not used in CAE
                 epochs=100,
                 batch_size=512,
-                max_grad_norm=None,  # not used in CAE
-                normalize_lin=False,  # not used in CAE
-                regularization=0.0,  # not used in CAE
             ),
             model_args=MLPModelArgs(),
-            data_args=Lorenz63DataArgs(lagtime=1, history_len=0),
+            data_args=Lorenz63DataArgs(lagtime=10, history_len=0),
             wandb_project="encoderops-lorenz63",
             wandb_entity="csml",
             num_devices=1,
