@@ -27,7 +27,7 @@ class MLP(torch.nn.Module):
         return self.model(data)
 
     def prepare_batch(self, train_batch):
-        x, y = train_batch["x"], train_batch["y"]
+        x, y = train_batch[0], train_batch[1]
         return x, y
 
 
