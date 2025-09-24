@@ -436,6 +436,62 @@ class ConsistentAEModule(lightning.LightningModule):
         }
         self.log_dict(metrics, on_step=True, prog_bar=True, logger=True)
         return loss
+    
+    def validation_step(self, val_batch, batch_idx):
+        lookback_len = self._kooplearn_model_weakref().lookback_len
+        encoded_batch = encode_contexts(val_batch, self.encoder)
+        K = self.evolution_operator
+        bwd_K = self.bwd_evolution_operator
+
+        evolved_batch = evolve_contexts(encoded_batch, lookback_len, K, backward_operator=bwd_K)
+        decoded_batch = decode_contexts(evolved_batch, self.decoder)
+
+        MSE = torch.nn.MSELoss()
+        # Reconstruction loss
+        rec_loss = MSE(
+            val_batch.slice(slice(lookback_len - 1, lookback_len)),
+            decoded_batch.slice(slice(lookback_len - 1, lookback_len)),
+        )
+        # Prediction loss
+        pred_loss = MSE(
+            val_batch.lookforward(lookback_len),
+            decoded_batch.lookforward(lookback_len),
+        )
+        # Backward prediction loss
+        bwd_pred_loss = MSE(
+            val_batch.lookback(lookback_len - 1),
+            decoded_batch.lookback(lookback_len - 1),
+        )
+        # Linear loss
+        lin_loss = MSE(encoded_batch.data, evolved_batch.data)
+        # Consistency loss
+        cnst_loss = consistency_loss(
+            self.evolution_operator, self.bwd_evolution_operator
+        )
+
+        alpha_rec = self.hparams.loss_weights.get("rec", 1.0)
+        alpha_pred = self.hparams.loss_weights.get("pred", 1.0)
+        alpha_bwd_pred = self.hparams.loss_weights.get("bwd_pred", 1.0)
+        alpha_lin = self.hparams.loss_weights.get("lin", 1.0)
+        alpha_consistency = self.hparams.loss_weights.get("consistency", 1.0)
+
+        loss = (
+            alpha_rec * rec_loss
+            + alpha_pred * pred_loss
+            + alpha_bwd_pred * bwd_pred_loss
+            + alpha_lin * lin_loss
+            + alpha_consistency * cnst_loss
+        )
+        metrics = {
+            "val/reconstruction_loss": rec_loss.item(),
+            "val/prediction_loss": pred_loss.item(),
+            "val/backward_prediction_loss": bwd_pred_loss.item(),
+            "val/linear_loss": lin_loss.item(),
+            # "val/consistency_loss": cnst_loss.item(),
+            "val/full_loss": loss.item(),
+        }
+        self.log_dict(metrics, on_step=True, prog_bar=True, logger=True)
+        return loss
 
     def transfer_batch_to_device(self, batch, device, dataloader_idx):
         batch.data = batch.data.to(device)

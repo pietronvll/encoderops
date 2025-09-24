@@ -418,6 +418,46 @@ class DynamicAEModule(lightning.LightningModule):
         metrics["train/full_loss"] = loss.item()
         self.log_dict(metrics, on_step=True, prog_bar=True, logger=True)
         return loss
+    
+    def validation_step(self, val_batch, batch_idx):
+        lookback_len = self._kooplearn_model_weakref().lookback_len
+        encoded_batch = encode_contexts(val_batch, self.encoder)
+        if self.hparams.use_lstsq_for_evolution:
+            K = self._lstsq_evolution(encoded_batch)
+        else:
+            K = self.evolution_operator
+        evolved_batch = evolve_contexts(encoded_batch, lookback_len, K)
+        decoded_batch = decode_contexts(evolved_batch, self.decoder)
+
+        MSE = torch.nn.MSELoss()
+        # Reconstruction + prediction loss
+        rec_loss = MSE(
+            val_batch.lookback(lookback_len),
+            decoded_batch.lookback(lookback_len),
+        )
+        pred_loss = MSE(
+            val_batch.lookforward(lookback_len),
+            decoded_batch.lookforward(lookback_len),
+        )
+
+        alpha_rec = self.hparams.loss_weights.get("rec", 1.0)
+        alpha_pred = self.hparams.loss_weights.get("pred", 1.0)
+
+        loss = alpha_rec * rec_loss + alpha_pred * pred_loss
+        metrics = {
+            "val/reconstruction_loss": rec_loss.item(),
+            "val/prediction_loss": pred_loss.item(),
+        }
+        if not self.hparams.use_lstsq_for_evolution:
+            # Linear loss
+            lin_loss = MSE(encoded_batch.data, evolved_batch.data)
+            metrics["val/linear_loss"] = lin_loss.item()
+            alpha_lin = self.hparams.loss_weights.get("lin", 1.0)
+            loss += alpha_lin * lin_loss
+
+        metrics["val/full_loss"] = loss.item()
+        self.log_dict(metrics, on_step=True, on_epoch=False,prog_bar=True, logger=True)
+        return loss
 
     def transfer_batch_to_device(self, batch, device, dataloader_idx):
         batch.data = batch.data.to(device)
