@@ -62,6 +62,7 @@ class EMACovariance(torch.nn.Module):
         self.register_buffer("mean_Y", torch.zeros(feature_dim))
         self.register_buffer("cov_Y", torch.eye(feature_dim))
         self.register_buffer("cov_XY", torch.eye(feature_dim))
+        self.register_buffer("is_initialized", torch.tensor(False, dtype=torch.bool))
         self._has_been_called_once = False
 
     @torch.no_grad()
@@ -69,7 +70,7 @@ class EMACovariance(torch.nn.Module):
         assert X.ndim == 2
         assert X.shape == Y.shape
         assert X.shape[1] == self.mean_X.shape[0]
-        if not self._has_been_called_once:
+        if not self.is_initialized.item():
             self._first_forward(X, Y)
         else:
             mean_X = X.mean(dim=0, keepdim=True)
@@ -105,7 +106,7 @@ class EMACovariance(torch.nn.Module):
         self._inplace_set(cov_X, self.cov_X)
         self._inplace_set(cov_Y, self.cov_Y)
         self._inplace_set(cov_XY, self.cov_XY)
-        self._has_been_called_once = True
+        self.is_initialized = torch.tensor(True, dtype=torch.bool)
 
     def _inplace_set(self, update, current):
         if torch.distributed.is_initialized():
@@ -130,7 +131,7 @@ class EuclideanNorm(torch.nn.Module):
         return torch.nn.functional.normalize(X, dim=-1)
 
 
-class MaskedCNN(torch.nn.Module):
+class TinyMaskedCNN(torch.nn.Module):
     def __init__(self, in_chans, num_classes):
         super().__init__()
         
@@ -157,19 +158,19 @@ class MaskedCNN(torch.nn.Module):
         sst_data = x[:, :-1, :, :]
         mask = x[:, -1:, :, :]
 
-        out = torch.functional.relu(self.bn1(self.conv1(sst_data)))
+        out = torch.nn.functional.relu(self.bn1(self.conv1(sst_data)))
         out = self.pool(out)
-        mask = torch.functional.max_pool2d(mask, 2)
+        mask = torch.nn.functional.max_pool2d(mask, 2)
 
-        out = torch.functional.relu(self.bn2(self.conv2(out)))
+        out = torch.nn.functional.relu(self.bn2(self.conv2(out)))
         out = self.pool(out)
-        mask = torch.functional.max_pool2d(mask, 2)
+        mask = torch.nn.functional.max_pool2d(mask, 2)
 
-        out = torch.functional.relu(self.bn3(self.conv3(out)))
+        out = torch.nn.functional.relu(self.bn3(self.conv3(out)))
         out = self.pool(out)
-        mask = torch.functional.max_pool2d(mask, 2)
+        mask = torch.nn.functional.max_pool2d(mask, 2)
 
-        out = torch.functional.relu(self.bn4(self.conv4(out)))
+        out = torch.nn.functional.relu(self.bn4(self.conv4(out)))
         # No pool after final conv
 
         pooled = self.global_pool(out, mask)  # [batch, 128]
@@ -206,4 +207,4 @@ class MaskedGlobalPooling(torch.nn.Module):
                 features,
                 torch.full_like(features, -1e9)
             )
-            return torch.functional.adaptive_max_pool2d(masked_features, 1).squeeze(-1).squeeze(-1)
+            return torch.nn.functional.adaptive_max_pool2d(masked_features, 1).squeeze(-1).squeeze(-1)
