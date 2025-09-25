@@ -367,7 +367,7 @@ class Lorenz63DataModule(LightningDataModule):
         self,
         args: TrainerArgs,
         data_args: Lorenz63DataArgs,
-        num_workers: int,
+        num_workers: int = 4,
     ):
         super().__init__()
         self.args = args
@@ -403,25 +403,25 @@ class Lorenz63DataModule(LightningDataModule):
     def load_state_dict(self, state):
         self.data_args = Lorenz63DataArgs(**state["data_args"])
         self.num_workers = state["num_workers"]
-        self.data_path = self.parse_datapath(self.data_args.data_path)
+        self.data_path = self.parse_datapath(self.data_args.data_path) 
 
     def setup(self, stage):
         self.train_dataset = Lorenz63Dataset(
             lagtime=self.data_args.lagtime,
             history_len=self.data_args.history_len,
-            data_path=self.data_path,
+            data_path=self.data_path / "lorenz63/lorenz63_dataset.nc",
             split="train",
         )
         self.val_dataset = Lorenz63Dataset(
             lagtime=self.data_args.lagtime,
             history_len=self.data_args.history_len,
-            data_path=self.data_path,
+            data_path=self.data_path / "lorenz63/lorenz63_dataset.nc",
             split="val",
         )
         self.test_dataset = Lorenz63Dataset(
             lagtime=self.data_args.lagtime,
             history_len=self.data_args.history_len,
-            data_path=self.data_path,
+            data_path=self.data_path / "lorenz63/lorenz63_dataset.nc",
             split="test",
         )
 
@@ -500,13 +500,17 @@ class SSTDataModule(LightningDataModule):
         return data_path  # Preprocessed offline for the moment. Maybe move to prepare_data if asked to.
 
     def prepare_data(self):
-        if not (self.data_path / "SST/sst_monthly.nc").exists():
-            logger.info("Downloading Temperature dataset")
+        if self.data_args.data_source == "ORAS5":
+            data_source = "SST/sst_monthly.nc"
+        elif self.data_args.data_source == "CESM":
+            data_source = "SST/cesm_sst_regridded_1.5deg_850-2005.nc"
+        if not (self.data_path / data_source).exists():
+            logger.info(f"Downloading {self.data_args.data_source} dataset")
             import huggingface_hub as hf
 
             hf.hf_hub_download(
-                repo_id="pnovelli/encoderops",
-                filename="SST/sst_monthly.nc",
+                repo_id="CSML-IIT/encoderops",
+                filename=data_source,
                 repo_type="dataset",
                 local_dir=self.data_path,
             )
@@ -525,21 +529,42 @@ class SSTDataModule(LightningDataModule):
             self.train_dataset = SSTDataset(
                 lagtime=self.data_args.lagtime,
                 history_len=self.data_args.history_len,
+                augmentations=self.data_args.augmentations,
+                random_roll=self.data_args.random_roll,
+                vertical_flip_probability=self.data_args.vertical_flip_probability,
                 data_path=self.data_path,
+                land_mask=self.data_args.mask,
                 split="train",
+                data_source=self.data_args.data_source,
             )
             self.val_dataset = SSTDataset(
                 lagtime=self.data_args.lagtime,
                 history_len=self.data_args.history_len,
                 data_path=self.data_path,
+                augmentations=False,
+                land_mask=self.data_args.mask,
                 split="val",
+                data_source=self.data_args.data_source,
             )
         elif stage == "test":
+            self.test_dataset = SSTDataset(
+                lagtime=self.data_args.lagtime,
+                history_len=self.data_args.history_len,
+                data_path=self.data_path,
+                augmentations=False,
+                land_mask=self.data_args.mask,
+                split="test",
+                data_source=self.data_args.data_source,
+            )
+        elif stage == "full":
             self.full_dataset = SSTDataset(
                 lagtime=self.data_args.lagtime,
                 history_len=self.data_args.history_len,
                 data_path=self.data_path,
+                augmentations=False,
+                land_mask=self.data_args.mask,
                 split="full",
+                data_source=self.data_args.data_source,
             )
 
     def train_dataloader(self):
@@ -547,16 +572,41 @@ class SSTDataModule(LightningDataModule):
             self.train_dataset,
             batch_size=self.args.batch_size,
             shuffle=True,
-            drop_last=True,
+            num_workers=self.num_workers,
+            persistent_workers=True,
         )
 
     def val_dataloader(self):
         return DataLoader(
             self.val_dataset,
             batch_size=self.args.batch_size,
-            shuffle=True,
-            drop_last=False,
+            shuffle=False,
+            num_workers=self.num_workers,
+            persistent_workers=True,
         )
+
+
+class SSTAugmentations(torch.nn.Module):
+    def __init__(
+        self, random_roll: bool = True, vertical_flip_probability: float = 0.5
+    ):
+        super().__init__()
+        self.vertical_flip_probability = vertical_flip_probability
+        self.random_roll = random_roll
+
+    def forward(self, image: torch.Tensor, image_lag: torch.Tensor):
+        if self.random_roll:
+            W: int = image.shape[-1]
+            shift = torch.randint(W - 1, (1,)).item()
+
+            image = torch.roll(image, shifts=shift, dims=-1)
+            image_lag = torch.roll(image_lag, shifts=shift, dims=-1)
+
+        vertical_flip = torch.rand(1).item() < self.vertical_flip_probability
+        if vertical_flip:
+            image = torch.flip(image, dims=(-2,))
+            image_lag = torch.flip(image_lag, dims=(-2,))
+        return image, image_lag
 
 
 class SSTDataset(Dataset):
@@ -564,13 +614,25 @@ class SSTDataset(Dataset):
         self,
         lagtime: int = 1,
         history_len: int = 0,
+        augmentations: bool = False,
+        random_roll: bool = True,
+        vertical_flip_probability: float = 0.5,
         data_path: str | Path | None = None,
-        split: Literal["train", "val", "full"] = "train",
+        split: Literal["train", "val", "test", "full"] = "train",
+        land_mask: bool = True,
+        data_source: Literal["ORAS5", "CESM"] = "ORAS5",
+        detrend: bool = False,
     ):
         # If data_path is not specified, read it from the environment variable "DATA_PATH"
         self.lagtime = lagtime
         self.history_len = history_len
         self.split = split
+        self.augmentations = augmentations
+        self.transforms = SSTAugmentations(
+            random_roll=random_roll, vertical_flip_probability=vertical_flip_probability
+        )
+        self.land_mask = land_mask
+        self.data_source = data_source
 
         if data_path is None:
             try:
@@ -580,35 +642,53 @@ class SSTDataset(Dataset):
                     "data_path environment variable is not set, and data_path is not provided."
                 )
 
-        dataset_path = Path(data_path) / "SST/sst_monthly.nc"
-        ds = xr.open_dataset(dataset_path)
-        ds = self._compute_oni(
+        if self.data_source == "ORAS5":
+            dataset_path = Path(data_path) / "SST/sst_monthly.nc"
+            split_years = {
+                "full": list(range(1979, 2024)),
+                "train": list(range(1979, 2017)),
+                "val": list(range(2017, 2024)),
+                "test": list(range(2017, 2024))
+                }
+        elif self.data_source == "CESM":
+            dataset_path = Path(data_path) / "SST/cesm_sst_regridded_1.5deg_850-2005.nc"
+            split_years = {
+                "full": list(range(850, 2006)),
+                "train": list(range(850, 1900)),
+                "val": list(range(1900, 2006)),
+                "test": list(range(1900, 2006))
+                }
+        else:
+            raise ValueError(f"Unsupported data_source: {self.data_source}")
+
+        ds = xr.open_dataset(dataset_path, use_cftime=True)
+        anomalies = self._compute_oni(
             ds,
-            method="fixed",
+            method="centered",
             output="anomalies",
             latitude_range=(180.0, -180.0),
             longitude_range=(0.0, 360.0),
+            detrend=detrend,
         )
-        oni = self._compute_oni(ds, method="fixed")
-        oni_full = self._compute_oni(
-            ds,
-            method="fixed",
-            output="oni",
-            latitude_range=(180.0, -180.0),
-            longitude_range=(0.0, 360.0),
-        )
-        split_years = {"train": list(range(1979, 2017)), "val": list(range(2017, 2024))}
+        oni = self._compute_oni(ds, method="centered")
+
         if split == "full":
             self.ds = ds
+            self.anomalies = anomalies
             self.oni = oni
-            self.oni_full = oni_full
         else:
             time_mask = ds.time.dt.year.isin(split_years[split])
             self.ds = ds.sel(time=time_mask)
+            self.anomalies = anomalies.sel(time=time_mask)
+            self.oni_full = oni
             self.oni = oni.sel(time=time_mask)
-            self.oni_full = oni_full.sel(time=time_mask)
-        self.data = np.squeeze(self.ds.__xarray_dataarray_variable__.values)
+
+        self.data = np.squeeze(self.anomalies.SST.values)
+
         self.time = self.ds.time.values
+        if self.land_mask:
+            self.anomalies["mask"] = (anomalies.SST != 0).astype("float32")
+            self.mask = self.anomalies.mask.values[0]
         if torch.distributed.is_initialized():
             if torch.distributed.get_rank() == 0:
                 logger.info(f"Dataset loaded with {self.num_samples} samples.")
@@ -624,14 +704,14 @@ class SSTDataset(Dataset):
 
     def _compute_oni(
         self,
-        sst_ds: xr.DataArray,
+        sst_ds: xr.DataArray | xr.Dataset,
         method: str = "fixed",
         output: str = "oni",
-        fixed_base_period: tuple = ("1991-01-01", "2020-12-31"),
-        centered_periods: list | None = None,
+        fixed_base_period: tuple = (1991, 2020),
         latitude_range: tuple[float, float] | None = None,
         longitude_range: tuple[float, float] | None = None,
-    ) -> xr.DataArray:
+        detrend: bool = False,
+    ) -> xr.DataArray | xr.Dataset:
         """
         Compute ONI index or SST anomalies based on a given method.
 
@@ -673,7 +753,8 @@ class SSTDataset(Dataset):
         # Fixed climatology method
         if method == "fixed":
             base_start, base_end = fixed_base_period
-
+            base_start = cftime.DatetimeNoLeap(int(base_start), 1, 1)
+            base_end = cftime.DatetimeNoLeap(int(base_end), 12, 31)
             # Select base period
             sst_base = sst_region.sel(time=slice(base_start, base_end))
             climatology = sst_base.groupby("time.month").mean("time")
@@ -683,34 +764,20 @@ class SSTDataset(Dataset):
 
         # Centered climatology method
         elif method == "centered":
-            if centered_periods is None:
-                centered_periods = [
-                    (1979, 1983, "1964-1993"),
-                    (1984, 1988, "1969-1998"),
-                    (1989, 1993, "1974-2003"),
-                    (1994, 1998, "1979-2008"),
-                    (1999, 2003, "1984-2013"),
-                    (2004, 2008, "1989-2018"),
-                    (2009, 2013, "1994-2023"),
-                    (2014, 2018, "1999-2028"),  # Note: beyond your data, careful here
-                    (2019, 2023, "2004-2033"),  # Note: beyond your data
-                ]
-
+            centered_periods = self._generate_centered_periods(sst_ds)
             anomalies_list = []
 
-            for start_year, end_year, base_period in centered_periods:
-                base_start, base_end = base_period.split("-")
-
+            for start_year, end_year, base_start, base_end in centered_periods:
+                base_start = cftime.DatetimeNoLeap(base_start, 1, 1)
+                base_end = cftime.DatetimeNoLeap(base_end, 12, 31)
                 # Select base climatology
-                sst_base = sst_region.sel(
-                    time=slice(f"{base_start}-01-01", f"{base_end}-12-31")
-                )
+                sst_base = sst_region.sel(time=slice(base_start, base_end))
                 climatology = sst_base.groupby("time.month").mean("time")
 
                 # Select block data
-                sst_block = sst_region.sel(
-                    time=slice(f"{start_year}-01-01", f"{end_year}-12-31")
-                )
+                start_year = cftime.DatetimeNoLeap(start_year, 1, 1)
+                end_year = cftime.DatetimeNoLeap(end_year, 12, 31)
+                sst_block = sst_region.sel(time=slice(start_year, end_year))
 
                 # Compute anomalies
                 anomalies_block = sst_block.groupby("time.month") - climatology
@@ -724,6 +791,19 @@ class SSTDataset(Dataset):
 
         # Step 4: Return output
         if output == "anomalies":
+            if detrend:
+                def detrend_along_time(da: xr.DataArray) -> xr.DataArray:
+                    from scipy.signal import detrend
+                    return xr.apply_ufunc(
+                        detrend,
+                        da,
+                        input_core_dims=[["time"]],
+                        output_core_dims=[["time"]],
+                        vectorize=True,
+                        dask="parallelized",
+                        output_dtypes=[da.SST.dtype],
+                    )
+                anomalies = detrend_along_time(anomalies)
             anomalies = anomalies.drop_vars("month")
             return anomalies
         elif output == "oni":
@@ -736,14 +816,61 @@ class SSTDataset(Dataset):
         else:
             raise ValueError("Output must be 'oni' or 'anomalies'.")
 
+    def _generate_centered_periods(
+        self,
+        sst_ds: xr.Dataset,
+        block_size: int = 5,
+        climatology_window: int = 30
+    ) -> list[tuple[int, int, str]]:
+        """
+        Generate (start, end, base_period) tuples for centered ONI computation.
+        
+        Parameters
+        ----------
+        sst_ds : xr.DataArray
+            SST dataset.
+        block_size : int
+            Width of the target block (in years).
+        climatology_window : int
+            Width of the base period (in years).
+
+        Returns
+        -------
+        List of tuples: (block_start_year, block_end_year, base_period_str)
+        """
+        years = np.unique(sst_ds.time.dt.year.values)
+        start_year = years.min()
+        end_year = years.max()
+
+        half_clim = climatology_window // 2
+        blocks = []
+
+        for mid_year in range(start_year, end_year, block_size):
+            block_start = mid_year
+            block_end = mid_year + block_size -1
+            base_start = mid_year - half_clim + 1
+            base_end = mid_year + half_clim
+            blocks.append((int(block_start), int(block_end), int(base_start), int(base_end)))
+
+        return blocks
+
     def _load_sample(self, idx: int):
         x_selectors = [idx - h + self.history_len for h in range(self.history_len + 1)]
         y_selectors = [x_id + self.lagtime for x_id in x_selectors]
         x = self.data[x_selectors]
         y = self.data[y_selectors]
 
+        if self.land_mask:
+            # mask = self.mask[..., 1:, 1:]  # skip empty vertical line at x = 0, y = 0
+            mask = self.mask
+            x = np.concatenate((x, mask), axis=0)
+            y = np.concatenate((y, mask), axis=0)
+
         x = torch.from_numpy(x).float()
         y = torch.from_numpy(y).float()
+
+        if self.augmentations:
+            x, y = self.transforms(x, y)
 
         times = self.time[x_selectors]
         times_lag = self.time[y_selectors]
@@ -766,7 +893,6 @@ class SSTDataset(Dataset):
 
         if idx >= len(self):
             raise IndexError("Index out of range")
-
         x, y, t, t_lag = self._load_sample(idx)
         return {
             "x": x,
@@ -792,12 +918,12 @@ class Lorenz63Dataset(Dataset):
         if data_path is None:
             try:
                 data_path = os.environ["DATA_PATH"]
+                data_path = Path(data_path) / "lorenz63/lorenz63_dataset.nc"
             except KeyError:
                 raise ValueError(
                     "data_path environment variable is not set, and data_path is not provided."
                 )
-            
-        ds = xr.open_dataset(data_path)
+        ds = xr.open_dataset(data_path, engine="netcdf4")
         self.ds = ds.sel(time=ds.split == split)
         self.data = self.ds["trajectory"].values.astype("float32")
         self.time = self.ds["time"].values.astype("float32")

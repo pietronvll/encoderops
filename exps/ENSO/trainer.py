@@ -1,19 +1,20 @@
-# uv run python -m exps.trpcage.trainer trp-cage --help
+# uv run python -m exps.ENSO.trainer ENSO_CESM --help
 
 from dataclasses import asdict
 
 import tyro
-from lightning import Trainer
+from lightning.pytorch import Trainer, seed_everything
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 
 from src.configs import Configs, defaults
 from src.data import SSTDataModule
 from src.model import EvolutionOperator
-from src.modules import ResNet18
-
+from src.utils import EpochTimerCallback
+from src.modules import MaskedCNN
 
 def main(cfg: Configs):
+    seed_everything(cfg.trainer_args.seed, workers=True)
     datamodule = SSTDataModule(cfg.trainer_args, cfg.data_args, cfg.dataloader_workers)
     datamodule.prepare_data()
     datamodule.setup("fit")
@@ -24,14 +25,21 @@ def main(cfg: Configs):
         offline=cfg.offline,
         save_dir="./logs",
     )
+    # Add configs
+    wandb_logger.experiment.config.update(asdict(cfg))
 
-    checkpoint_callback = ModelCheckpoint(
-        every_n_epochs=20, save_top_k=-1, save_last=True
+    checkpoint_all = ModelCheckpoint(
+        every_n_epochs=20, save_last=True, save_top_k=-1, filename="{epoch}"
     )
+    checkpoint_best = ModelCheckpoint(
+        save_top_k=1, monitor="val_loss_noreg", mode="max", filename="best"
+    )
+    timer = EpochTimerCallback()
+
     # Trainer
     trainer = Trainer(
         logger=wandb_logger,
-        callbacks=[checkpoint_callback],
+        callbacks=[checkpoint_all, checkpoint_best, timer],
         accelerator="cuda",
         devices=cfg.num_devices,
         max_epochs=cfg.trainer_args.epochs,
@@ -41,10 +49,10 @@ def main(cfg: Configs):
     # Model
     encoder_args = {
         "num_classes": cfg.trainer_args.latent_dim,
-        "in_chans": cfg.data_args.history_len + 1,
+        "in_chans": cfg.data_args.history_len + (2 if cfg.data_args.mask else 1),
     }
     encoder_args = encoder_args | asdict(cfg.model_args)
-    model = EvolutionOperator(ResNet18, encoder_args, cfg.trainer_args)
+    model = EvolutionOperator(MaskedCNN, encoder_args, cfg.trainer_args)
     trainer.fit(model, datamodule=datamodule)
 
 

@@ -4,7 +4,7 @@ from typing import Literal, Tuple
 
 @dataclass
 class TrainerArgs:
-    latent_dim: int
+    latent_dim: int = 16
     "Dimension of the latent space"
     encoder_lr: float = 1e-3
     "Learning rate for the encoder"
@@ -65,6 +65,14 @@ class ResNet18ModelArgs:
 
 
 @dataclass
+class MaskedCNNArgs:
+    in_chans: int = 1
+    "Number of input channels"
+    num_classes: int = 128
+    "Embedding dimension"
+
+
+@dataclass
 class DESRESDataArgs:
     protein_id: str
     "Protein ID"
@@ -114,12 +122,22 @@ class SSTDataArgs:
     "Number of frames to use as history"
     data_path: str | None = None
     "Path to the data file. If None, tries to read the 'DATA_PATH' environment variable"
+    augmentations: bool = False
+    "Add augmentations to the images"
+    random_roll: bool = True
+    "Perform a random roll"
+    vertical_flip_probability: float = 0.5
+    "Probability of a north-south flip"
+    mask: bool = True
+    "Whether to add a mask as a second channel to the input data"
+    data_source: Literal["ORAS5", "CESM"] = "ORAS5"
+    "Whether to load observational data (ORAS5) or syntethic model data (CESM)."
 
 
 @dataclass
 class Configs:
     trainer_args: TrainerArgs
-    model_args: SchNetModelArgs | MLPModelArgs | ResNet18ModelArgs
+    model_args: SchNetModelArgs | MLPModelArgs | ResNet18ModelArgs | MaskedCNNArgs
     data_args: DESRESDataArgs | Lorenz63DataArgs | CalixareneDataArgs | SSTDataArgs
     wandb_project: str
     wandb_entity: str | None = None
@@ -273,23 +291,50 @@ defaults = {
             wandb_project="encoderops-calixarene-G1+3",
         ),
     ),
-    "ENSO": (
-        "Enso Modes",
+    "ENSO_CESM": (
+        "ENSO CESM",
         Configs(
             trainer_args=TrainerArgs(
                 latent_dim=128,
                 encoder_lr=1e-3,
                 linear_lr=1e-3,
-                epochs=1000,
+                epochs=100,
                 batch_size=64,
-                max_grad_norm=1e-5,
-                normalize_lin=False,
-                regularization=1e-4,
-                normalize_latents="euclidean",
-                # simnorm_dim=2,
+                max_grad_norm=0.2,
+                normalize_lin=True,
+                regularization=0,
+                loss="l2",
+                min_encoder_lr=1e-5,
+                normalize_latents="simnorm",
+                simnorm_dim=2,
+                seed=0,
             ),
-            model_args=ResNet18ModelArgs(),
-            data_args=SSTDataArgs(history_len=0),
+            model_args=MaskedCNNArgs(),
+            data_args=SSTDataArgs(history_len=0, augmentations=False, mask=True, data_source="CESM"),
+            wandb_project="encoderops-ENSO",
+            num_devices=1,
+        ),
+    ),
+    "ENSO_ORAS5": (
+        "ENSO ORAS5",
+        Configs(
+            trainer_args=TrainerArgs(
+                latent_dim=256,
+                encoder_lr=1e-3,
+                linear_lr=1e-3,
+                epochs=100,
+                batch_size=64,
+                max_grad_norm=0.2,
+                normalize_lin=True,
+                regularization=0,
+                loss="l2",
+                min_encoder_lr=1e-5,
+                normalize_latents="simnorm",
+                simnorm_dim=2,
+                seed=42,
+            ),
+            model_args=MaskedCNNArgs(),
+            data_args=SSTDataArgs(history_len=12, augmentations=False, mask=True, data_source="ORAS5"),
             wandb_project="encoderops-ENSO",
             num_devices=1,
         ),

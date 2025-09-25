@@ -128,3 +128,82 @@ class EuclideanNorm(torch.nn.Module):
 
     def forward(self, X: torch.Tensor):
         return torch.nn.functional.normalize(X, dim=-1)
+
+
+class MaskedCNN(torch.nn.Module):
+    def __init__(self, in_chans, num_classes):
+        super().__init__()
+        
+        # Reduced convolutional layers
+        self.conv1 = torch.nn.Conv2d(in_chans - 1, 16, 3, padding=1)
+        self.conv2 = torch.nn.Conv2d(16, 32, 3, padding=1)
+        self.conv3 = torch.nn.Conv2d(32, 64, 3, padding=1)
+        self.conv4 = torch.nn.Conv2d(64, 128, 3, padding=1)
+        
+        self.bn1 = torch.nn.BatchNorm2d(16)
+        self.bn2 = torch.nn.BatchNorm2d(32)
+        self.bn3 = torch.nn.BatchNorm2d(64)
+        self.bn4 = torch.nn.BatchNorm2d(128)
+        
+        self.pool = torch.nn.MaxPool2d(2, 2)
+        
+        # Masked global pooling
+        self.global_pool = MaskedGlobalPooling('avg')
+        
+        # Final embedding layer
+        self.embedding = torch.nn.Linear(128, num_classes)
+        
+    def forward(self, x):
+        sst_data = x[:, :-1, :, :]
+        mask = x[:, -1:, :, :]
+
+        out = torch.functional.relu(self.bn1(self.conv1(sst_data)))
+        out = self.pool(out)
+        mask = torch.functional.max_pool2d(mask, 2)
+
+        out = torch.functional.relu(self.bn2(self.conv2(out)))
+        out = self.pool(out)
+        mask = torch.functional.max_pool2d(mask, 2)
+
+        out = torch.functional.relu(self.bn3(self.conv3(out)))
+        out = self.pool(out)
+        mask = torch.functional.max_pool2d(mask, 2)
+
+        out = torch.functional.relu(self.bn4(self.conv4(out)))
+        # No pool after final conv
+
+        pooled = self.global_pool(out, mask)  # [batch, 128]
+        return self.embedding(pooled)         # [batch, num_classes]
+
+    def prepare_batch(self, batch):
+        return batch["x"], batch["y"], batch["obs_x"], batch["obs_y"]
+    
+
+class MaskedGlobalPooling(torch.nn.Module):
+    def __init__(self, pool_type='avg'):
+        super().__init__()
+        self.pool_type = pool_type
+    
+    def forward(self, features, mask):
+        """
+        features: [batch, channels, height, width]
+        mask: [batch, 1, height, width] - 1 for ocean, 0 for land
+        """
+        if self.pool_type == 'avg':
+            # Masked average pooling
+            masked_features = features * mask
+            sum_features = torch.sum(masked_features, dim=[2, 3])  # [batch, channels]
+            valid_pixels = torch.sum(mask, dim=[2, 3])  # [batch, 1]
+            
+            # Avoid division by zero
+            valid_pixels = torch.clamp(valid_pixels, min=1e-8)
+            return sum_features / valid_pixels
+            
+        elif self.pool_type == 'max':
+            # Masked max pooling - set land pixels to very negative values
+            masked_features = torch.where(
+                mask.expand_as(features) == 1,
+                features,
+                torch.full_like(features, -1e9)
+            )
+            return torch.functional.adaptive_max_pool2d(masked_features, 1).squeeze(-1).squeeze(-1)
