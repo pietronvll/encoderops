@@ -11,7 +11,7 @@ from src.configs import Configs, defaults
 from src.data import SSTDataModule
 from src.model import EvolutionOperator
 from src.utils import EpochTimerCallback
-from src.modules import MaskedCNN
+from src.modules import  MaskedCNN
 
 def main(cfg: Configs):
     seed_everything(cfg.trainer_args.seed, workers=True)
@@ -32,7 +32,7 @@ def main(cfg: Configs):
         every_n_epochs=20, save_last=True, save_top_k=-1, filename="{epoch}"
     )
     checkpoint_best = ModelCheckpoint(
-        save_top_k=1, monitor="val_loss_noreg", mode="max", filename="best"
+        save_top_k=1,  mode="max", filename="best"
     )
     timer = EpochTimerCallback()
 
@@ -51,7 +51,7 @@ def main(cfg: Configs):
         "num_classes": cfg.trainer_args.latent_dim,
         "in_chans": cfg.data_args.history_len + (2 if cfg.data_args.mask else 1),
     }
-    encoder_args = encoder_args | asdict(cfg.model_args)
+    encoder_args = encoder_args 
     model = EvolutionOperator(MaskedCNN, encoder_args, cfg.trainer_args)
     trainer.fit(model, datamodule=datamodule)
 

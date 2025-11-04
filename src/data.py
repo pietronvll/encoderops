@@ -6,23 +6,25 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Literal
 
-import mdtraj
 import numpy as np
 import torch.distributed
 import xarray as xr
 from lightning import LightningDataModule
 from loguru import logger
-from mlcolvar.data.graph.atomic import AtomicNumberTable
-from mlcolvar.data.graph.utils import _create_dataset_from_configuration
-from mlcolvar.utils.io import (
-    _configures_from_trajectory,
-    _names_from_top,
-    _z_table_from_top,
-)
+
+try:
+    from mlcolvar.data.graph.atomic import AtomicNumberTable
+    from mlcolvar.data.graph.utils import _create_dataset_from_configuration
+    from mlcolvar.utils.io import (
+        _configures_from_trajectory,
+        _names_from_top,
+        _z_table_from_top,
+    )
+except ImportError:
+    print("mlcolvar is not installed. Please install it to use data modules.")
 from torch.utils.data import ConcatDataset, DataLoader, Dataset
 from torch_geometric.loader import DataLoader as PyGDataLoader
 
-import lmdb
 from src.configs import (
     CalixareneDataArgs,
     DESRESDataArgs,
@@ -32,18 +34,6 @@ from src.configs import (
 )
 from src.utils import FastTensorDataLoader
 
-
-def traj_to_confs(traj: mdtraj.Trajectory, system_selection: str | None = None):
-    configs = _configures_from_trajectory(traj, system_selection=system_selection)
-    z_table = _z_table_from_top([traj.top])
-    atom_names = _names_from_top([traj.top])
-    return configs, z_table, atom_names
-
-
-def mdtraj_load(trajectory_files: list[str], top: str, stride: int = 1000):
-    traj = mdtraj.load(trajectory_files, top=top, stride=stride)
-    traj.top = mdtraj.core.trajectory.load_topology(top)
-    return traj
 
 
 class DESRESDataModule(LightningDataModule):

@@ -2,7 +2,8 @@ import timm
 import torch
 import torch.distributed
 from linear_operator_learning.nn import MLP as lolMLP
-from mlcolvar.core.nn.graph.schnet import SchNetModel
+import torch.nn as nn
+import torch.nn.functional as F
 
 
 class ResNet18(torch.nn.Module):
@@ -129,6 +130,68 @@ class EuclideanNorm(torch.nn.Module):
 
     def forward(self, X: torch.Tensor):
         return torch.nn.functional.normalize(X, dim=-1)
+    
+
+
+class MaskedCNN(nn.Module):
+    def __init__(self,
+                 in_chans,
+                 num_classes,):
+        super(MaskedCNN, self).__init__()
+        
+        # Convolutional layers
+        self.conv1 = nn.Conv2d(in_chans-1, 64, 3, padding=1)
+        self.conv2 = nn.Conv2d(64, 128, 3, padding=1)
+        self.conv3 = nn.Conv2d(128, 256, 3, padding=1)
+        self.conv4 = nn.Conv2d(256, 512, 3, padding=1)
+        
+        self.bn1 = nn.BatchNorm2d(64)
+        self.bn2 = nn.BatchNorm2d(128)
+        self.bn3 = nn.BatchNorm2d(256)
+        self.bn4 = nn.BatchNorm2d(512)
+        
+        self.pool = nn.MaxPool2d(2, 2)
+        
+        # Masked global pooling
+        self.global_pool = MaskedGlobalPooling('avg')
+        
+        # Final embedding layer
+        self.embedding = nn.Linear(512, num_classes)
+        
+    def forward(self, x):
+        # x shape: [batch, 2, height, width] where channel 0=SST, channel 1=mask
+
+        sst_data = x[:, :-1, :, :]  # SST channel
+        mask = x[:, -1:, :, :]      # Mask channel
+        
+        # Convolutional layers with masking
+        out = F.relu(self.bn1(self.conv1(sst_data)))
+        out = self.pool(out)
+        mask = F.max_pool2d(mask, 2, 2)  # Downsample mask
+        
+        out = F.relu(self.bn2(self.conv2(out)))
+        out = self.pool(out)
+        mask = F.max_pool2d(mask, 2, 2)
+        
+        out = F.relu(self.bn3(self.conv3(out)))
+        out = self.pool(out)
+        mask = F.max_pool2d(mask, 2, 2)
+        
+        out = F.relu(self.bn4(self.conv4(out)))
+        # No pooling after last conv to preserve spatial resolution for masking
+        
+        # Masked global pooling - this is where land pixels are excluded
+        embedding = self.global_pool(out, mask)  # [batch, 512]
+        
+        # Final embedding
+        embedding = self.embedding(embedding)  # [batch, embedding_dim]
+        
+        return embedding
+    
+    def prepare_batch(self, batch):
+        x, y = batch["x"], batch["y"]
+        return x, y
+
 
 
 class TinyMaskedCNN(torch.nn.Module):
@@ -177,7 +240,7 @@ class TinyMaskedCNN(torch.nn.Module):
         return self.embedding(pooled)         # [batch, num_classes]
 
     def prepare_batch(self, batch):
-        return batch["x"], batch["y"], batch["obs_x"], batch["obs_y"]
+        return batch["x"], batch["y"]
     
 
 class MaskedGlobalPooling(torch.nn.Module):
