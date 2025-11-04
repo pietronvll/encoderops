@@ -11,7 +11,7 @@ from src.configs import Configs, defaults
 from src.data import SSTDataModule
 from src.model import EvolutionOperator
 from src.utils import EpochTimerCallback
-from src.modules import  MaskedCNN
+from src.modules import  CirTModel
 
 def main(cfg: Configs):
     seed_everything(cfg.trainer_args.seed, workers=True)
@@ -52,7 +52,7 @@ def main(cfg: Configs):
         "in_chans": cfg.data_args.history_len + (2 if cfg.data_args.mask else 1),
     }
     encoder_args = encoder_args 
-    model = EvolutionOperator(MaskedCNN, encoder_args, cfg.trainer_args)
+    model = EvolutionOperator(CirTModel, encoder_args, cfg.trainer_args)
     trainer.fit(model, datamodule=datamodule)
 
 

@@ -4,6 +4,7 @@ import torch.distributed
 from linear_operator_learning.nn import MLP as lolMLP
 import torch.nn as nn
 import torch.nn.functional as F
+from src.CirT import Model as CirTModel
 
 
 class ResNet18(torch.nn.Module):
