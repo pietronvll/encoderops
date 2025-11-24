@@ -24,9 +24,8 @@ def main(cfg: Configs):
         entity=cfg.wandb_entity,
         offline=cfg.offline,
         save_dir="./logs",
+        config=asdict(cfg),
     )
-    # Add configs
-    wandb_logger.experiment.config.update(asdict(cfg))
 
     checkpoint_all = ModelCheckpoint(
         every_n_epochs=20, save_last=True, save_top_k=-1, filename="{epoch}"

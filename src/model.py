@@ -208,7 +208,7 @@ class EvolutionOperator(lightning.LightningModule):
         self.log_dict(
             dict(loss_dict),
             on_step=True,
-            on_epoch=False,
+            on_epoch=True,
             sync_dist=False,
             prog_bar=True,
             batch_size=f_t.shape[0],

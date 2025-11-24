@@ -131,54 +131,75 @@ class EuclideanNorm(torch.nn.Module):
         return torch.nn.functional.normalize(X, dim=-1)
 
 
-class TinyMaskedCNN(torch.nn.Module):
-    def __init__(self, in_chans, num_classes):
+class MaskedCNN(torch.nn.Module):
+    """
+    Masked CNN architecture with selectable capacity:
+        size \in {"small", "medium", "large"}
+    """
+
+    CONFIGS = {
+        "small":  {"channels": [8, 16, 24, 32]},
+        "medium": {"channels": [16, 32, 64, 128]},
+        "large":  {"channels": [32, 64, 128, 256]},
+    }
+
+    def __init__(self, in_chans, num_classes, size="medium"):
         super().__init__()
-        
-        # Reduced convolutional layers
-        self.conv1 = torch.nn.Conv2d(in_chans - 1, 16, 3, padding=1)
-        self.conv2 = torch.nn.Conv2d(16, 32, 3, padding=1)
-        self.conv3 = torch.nn.Conv2d(32, 64, 3, padding=1)
-        self.conv4 = torch.nn.Conv2d(64, 128, 3, padding=1)
-        
-        self.bn1 = torch.nn.BatchNorm2d(16)
-        self.bn2 = torch.nn.BatchNorm2d(32)
-        self.bn3 = torch.nn.BatchNorm2d(64)
-        self.bn4 = torch.nn.BatchNorm2d(128)
-        
+        assert size in self.CONFIGS, f"Invalid size '{size}'. Must be small/medium/large."
+
+        cfg = self.CONFIGS[size]
+        C1, C2, C3, C4 = cfg["channels"]
+
+        # Convolutional blocks
+        self.conv1 = torch.nn.Conv2d(in_chans - 1, C1, 3, padding=1)
+        self.bn1 = torch.nn.BatchNorm2d(C1)
+
+        self.conv2 = torch.nn.Conv2d(C1, C2, 3, padding=1)
+        self.bn2 = torch.nn.BatchNorm2d(C2)
+
+        self.conv3 = torch.nn.Conv2d(C2, C3, 3, padding=1)
+        self.bn3 = torch.nn.BatchNorm2d(C3)
+
+        self.conv4 = torch.nn.Conv2d(C3, C4, 3, padding=1)
+        self.bn4 = torch.nn.BatchNorm2d(C4)
+
         self.pool = torch.nn.MaxPool2d(2, 2)
-        
-        # Masked global pooling
+
+        # Masked pooling
         self.global_pool = MaskedGlobalPooling('avg')
-        
-        # Final embedding layer
-        self.embedding = torch.nn.Linear(128, num_classes)
-        
+
+        # Output embedding
+        self.embedding = torch.nn.Linear(C4, num_classes)
+
     def forward(self, x):
-        sst_data = x[:, :-1, :, :]
-        mask = x[:, -1:, :, :]
+        sst = x[:, :-1]      # input channels minus mask channel
+        mask = x[:, -1:]     # mask channel
 
-        out = torch.nn.functional.relu(self.bn1(self.conv1(sst_data)))
+        # Block 1
+        out = torch.relu(self.bn1(self.conv1(sst)))
         out = self.pool(out)
-        mask = torch.nn.functional.max_pool2d(mask, 2)
+        mask = torch.max_pool2d(mask, 2)
 
-        out = torch.nn.functional.relu(self.bn2(self.conv2(out)))
+        # Block 2
+        out = torch.relu(self.bn2(self.conv2(out)))
         out = self.pool(out)
-        mask = torch.nn.functional.max_pool2d(mask, 2)
+        mask = torch.max_pool2d(mask, 2)
 
-        out = torch.nn.functional.relu(self.bn3(self.conv3(out)))
+        # Block 3
+        out = torch.relu(self.bn3(self.conv3(out)))
         out = self.pool(out)
-        mask = torch.nn.functional.max_pool2d(mask, 2)
+        mask = torch.max_pool2d(mask, 2)
 
-        out = torch.nn.functional.relu(self.bn4(self.conv4(out)))
-        # No pool after final conv
+        # Block 4
+        out = torch.relu(self.bn4(self.conv4(out)))
+        # no pool here
 
-        pooled = self.global_pool(out, mask)  # [batch, 128]
-        return self.embedding(pooled)         # [batch, num_classes]
+        pooled = self.global_pool(out, mask)
+        return self.embedding(pooled)
 
     def prepare_batch(self, batch):
-        return batch["x"], batch["y"], batch["obs_x"], batch["obs_y"]
-    
+        return batch["x"], batch["y"]
+
 
 class MaskedGlobalPooling(torch.nn.Module):
     def __init__(self, pool_type='avg'):

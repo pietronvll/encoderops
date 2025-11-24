@@ -66,10 +66,13 @@ class ResNet18ModelArgs:
 
 @dataclass
 class MaskedCNNArgs:
-    in_chans: int = 1
-    "Number of input channels"
-    num_classes: int = 128
-    "Embedding dimension"
+    # in_chans and num_classes arguments are defined dinamically in trainer.py
+    size: str = "medium"
+    "Size of the MaskedCNN model. Can be 'small', 'medium', or 'large'"
+    # in_chans: int = 1
+    # "Number of input channels"
+    # num_classes: int = 128
+    # "Embedding dimension"
 
 
 @dataclass
@@ -307,7 +310,7 @@ defaults = {
                 min_encoder_lr=1e-5,
                 normalize_latents="simnorm",
                 simnorm_dim=2,
-                seed=0,
+                seed=42,
             ),
             model_args=MaskedCNNArgs(),
             data_args=SSTDataArgs(history_len=0, augmentations=False, mask=True, data_source="CESM"),
