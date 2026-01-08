@@ -1,3 +1,4 @@
 {
-    "livePreview.defaultPreviewPath": "/docs/index.html"
+    "livePreview.defaultPreviewPath": "/docs/index.html",
+    "python.REPL.enableREPLSmartSend": false
 }
