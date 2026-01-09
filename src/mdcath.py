@@ -360,8 +360,12 @@ class MDCATH(Dataset):
         """Return number of valid (frame, frame+lag) pairs."""
         return len(self.idx)
 
-    def __getitem__(self, index: int) -> Dict[str, torch.Tensor]:
+    def __getitem__(
+        self, index: int, remove_hydrogen_atoms: bool = True
+    ) -> Dict[str, torch.Tensor]:
         """Get a pair of configurations separated by lagtime.
+
+        Par
 
         Returns:
         --------
@@ -374,41 +378,31 @@ class MDCATH(Dataset):
 
         pdb_id, file_path, temp, replica, frame_idx = self.idx[index]
 
-        # Load current frame
-        z_t0, coords_t0, forces_t0 = self._load_frame(
-            file_path, pdb_id, temp, replica, frame_idx
-        )
-
-        # Load lagged frame
-        z_tlag, coords_tlag, forces_tlag = self._load_frame(
-            file_path, pdb_id, temp, replica, frame_idx + self.lagtime
-        )
-
-        # Create data dictionaries
-        item = {
-            "z": torch.tensor(z_t0, dtype=torch.long),
-            "pos": torch.tensor(coords_t0, dtype=torch.float32),
-            "neg_dy": torch.tensor(forces_t0, dtype=torch.float32),
-            "info": f"{pdb_id}_{temp}_{replica}_{frame_idx}",
-            "pdb_id": pdb_id,
-            "temp": temp,
-            "replica": replica,
-        }
-
-        item_lag = {
-            "z": torch.tensor(z_tlag, dtype=torch.long),
-            "pos": torch.tensor(coords_tlag, dtype=torch.float32),
-            "neg_dy": torch.tensor(forces_tlag, dtype=torch.float32),
-            "info": f"{pdb_id}_{temp}_{replica}_{frame_idx + self.lagtime}",
-            "pdb_id": pdb_id,
-            "temp": temp,
-            "replica": replica,
-        }
-
-        return {
-            "item": item,
-            "item_lag": item_lag,
-        }
+        data = {}
+        for frame_idx, key in zip(
+            [frame_idx, frame_idx + self.lagtime], ["item", "item_lag"]
+        ):
+            # Load frame
+            z, coords, forces = self._load_frame(
+                file_path, pdb_id, temp, replica, frame_idx
+            )
+            if remove_hydrogen_atoms:
+                mask = z != 1
+                z = z[mask]
+                coords = coords[mask]
+                forces = forces[mask]
+            data[key] = {
+                "z": torch.tensor(z, dtype=torch.long),
+                "pos": torch.tensor(coords, dtype=torch.float32),
+                "neg_dy": torch.tensor(forces, dtype=torch.float32),
+                "info": f"{pdb_id}_{temp}_{replica}_{frame_idx}",
+                "pdb_id": pdb_id,
+                "temp": temp,
+                "replica": replica,
+            }
+        # paranoic assert
+        assert torch.all(data["item"]["z"] == data["item_lag"]["z"]).item()
+        return data
 
     def get_trajectory_info(self) -> Dict:
         """Get information about all trajectories in the dataset."""
