@@ -15,6 +15,7 @@ import h5py
 import numpy as np
 import torch
 from lightning import LightningDataModule
+from loguru import logger
 from rich.console import Group
 from rich.live import Live
 from rich.progress import (
@@ -25,7 +26,8 @@ from rich.progress import (
     TimeRemainingColumn,
     TransferSpeedColumn,
 )
-from torch_geometric.data import Data, Dataset
+from torch.utils.data import Dataset
+from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 
 from src.configs import MDCATHDataArgs, TrainerArgs
@@ -53,10 +55,10 @@ class MDCATH(Dataset):
         data_args: MDCATHDataArgs
         """
         super().__init__()
-
         self.url = "https://huggingface.co/datasets/compsciencelab/mdCATH/resolve/main/"
         self.data_args = data_args
         self.root = self._parse_datapath(self.data_args.data_path)
+
         self.root.mkdir(parents=True, exist_ok=True)
 
         self.source_file = self.data_args.source_file
@@ -105,6 +107,7 @@ class MDCATH(Dataset):
                 root = Path(root)  # ty:ignore[invalid-assignment]
         else:
             root = Path(data_path)  # ty:ignore[invalid-assignment]
+        logger.info(f"Loading data from {root}")
         return root
 
     def _log_info(self):
@@ -334,7 +337,7 @@ class MDCATH(Dataset):
         """Return number of valid (frame, frame+lag) pairs."""
         return len(self.idx)
 
-    def __getitem__(self, index: int):
+    def __getitem__(self, idx):
         """Get a pair of configurations separated by lagtime.
 
         Par
@@ -345,10 +348,10 @@ class MDCATH(Dataset):
             - 'item': dict with 'z', 'pos', 'neg_dy', 'info' for current frame
             - 'item_lag': dict with 'z', 'pos', 'neg_dy', 'info' for lagged frame
         """
-        if isinstance(index, (slice, list, tuple)):
+        if isinstance(idx, (slice, list, tuple)):
             raise NotImplementedError("Only integer indexing is supported")
 
-        pdb_id, file_path, temp, replica, frame_idx = self.idx[index]
+        pdb_id, file_path, temp, replica, frame_idx = self.idx[idx]
 
         data = {}
         for frame_idx, key in zip(
@@ -358,12 +361,15 @@ class MDCATH(Dataset):
             z, coords, forces = self._load_frame(
                 file_path, pdb_id, temp, replica, frame_idx
             )
-            if remove_hydrogen_atoms:
+            if self.remove_hydrogen_atoms:
                 mask = z != 1
                 z = z[mask]
                 coords = coords[mask]
                 forces = forces[mask]
-
+            # !! Todo use from mlcolvar.data.graph.utils._create_dataset_from_configuration
+            # data[key] = torch_geometric.data.Data object instead of a plain dict as below
+            # This is important to compute the connectivity of the graph
+            # See CalixareneDataset to see how it was implemented
             data[key] = {
                 "z": torch.tensor(z, dtype=torch.long),
                 "pos": torch.tensor(coords, dtype=torch.float32),
@@ -404,13 +410,11 @@ class MDCATHDataModule(LightningDataModule):
         super().__init__()
         self.args = args
         self.data_args = data_args
-        self.data_path = self.parse_datapath(self.data_args.data_path)
         self.num_workers = num_workers
 
     def setup(self, stage):
         self.dataset = MDCATH(
-            root=self.data_path,
-            lagtime=self.data_args.lagtime,
+            data_args=self.data_args,
         )
 
     def state_dict(self):
@@ -420,7 +424,6 @@ class MDCATHDataModule(LightningDataModule):
     def load_state_dict(self, state_dict):
         self.data_args = MDCATHDataArgs(**state_dict["data_args"])
         self.num_workers = state_dict["num_workers"]
-        self.data_path = self.parse_datapath(self.data_args.data_path)
 
     def train_dataloader(self):
         return DataLoader(
