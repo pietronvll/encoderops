@@ -77,6 +77,44 @@ class DESRESDataArgs:
 
 
 @dataclass
+class MDCATHDataArgs:
+    lagtime: int = 1
+    "Lagtime (in number of frames) used to generate lagged data"
+    cutoff_ang: float = 7.0
+    "Cutoff distance in Angstroms for defining neighbors in the graph"
+    data_path: str | None = None
+    "Path to the MDCATH database. If None, tries to read the 'MDCATH_DATA_PATH' environment variable."
+    source_file: str = "mdcath_source.h5"
+    "Name of the source file with protein structure information."
+    file_basename: str = "mdcath_dataset"
+    "Base name of the hdf5 files."
+    numAtoms: int | None = 5000
+    "Max number of atoms in the protein structure."
+    numNoHAtoms: int | None = None
+    "Max number of non-hydrogen atoms. Default is None."
+    numResidues: int | None = 1000
+    "Max number of residues in the protein structure."
+    temperatures: list[str] | str = '348'
+    "List of temperatures (in Kelvin) to include. Default is ['348']. Available: ['320', '348', '379', '413', '450']"
+    skip_frames: int = 1
+    pdb_list: None | list[str] | str = None
+    min_gyration_radius: float | None = None
+    "Minimum gyration radius (in nm)."
+    max_gyration_radius: float | None = None
+    "Maximum gyration radius (in nm)."
+    alpha_beta_coil: tuple | None = None
+    "Minimum percentage of alpha-helix, beta-sheet and coil residues. "
+    solid_ss: float | None = None
+    "Minimum percentage of solid secondary structure (alpha + beta)/total * 100."
+    numFrames: int | None = None
+    "Minimum number of frames in trajectory."
+    cutoff_ang: float = 7.0
+    "Cutoff distance in angstroms for neighbor calculations."
+    remove_hydrogen_atoms: bool = True
+    "Whether to remove hydrogen atoms when loading the structures. Default is True."
+
+
+@dataclass
 class CalixareneDataArgs:
     molecule_ids: Tuple[str, ...]
     "Molecule IDs"
@@ -216,12 +254,12 @@ defaults = {
             trainer_args=TrainerArgs(
                 latent_dim=8,
                 encoder_lr=1e-3,
-                linear_lr=1e-3, #not used in CAE
+                linear_lr=1e-3,  # not used in CAE
                 epochs=100,
                 batch_size=512,
-                max_grad_norm=None, #not used in CAE
-                normalize_lin=False, #not used in CAE
-                regularization=0.0, #not used in CAE
+                max_grad_norm=None,  # not used in CAE
+                normalize_lin=False,  # not used in CAE
+                regularization=0.0,  # not used in CAE
             ),
             model_args=MLPModelArgs(),
             data_args=Lorenz63DataArgs(lagtime=1, history_len=0),

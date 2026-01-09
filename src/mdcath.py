@@ -6,13 +6,15 @@ import math
 import os
 import urllib.request
 from collections import defaultdict
+from dataclasses import asdict
 from os.path import join as opj
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, Tuple
 
 import h5py
 import numpy as np
 import torch
+from lightning import LightningDataModule
 from rich.console import Group
 from rich.live import Live
 from rich.progress import (
@@ -23,7 +25,10 @@ from rich.progress import (
     TimeRemainingColumn,
     TransferSpeedColumn,
 )
-from torch.utils.data import Dataset
+from torch_geometric.data import Data, Dataset
+from torch_geometric.loader import DataLoader
+
+from src.configs import MDCATHDataArgs, TrainerArgs
 
 
 def load_pdb_list(pdb_list):
@@ -34,89 +39,45 @@ def load_pdb_list(pdb_list):
         print(f"Reading PDB list from {pdb_list}")
         with open(pdb_list, "r") as file:
             return [line.strip() for line in file]
+    elif pdb_list is None:
+        return None
     raise ValueError("Invalid PDB list. Please provide a list or a path to a file.")
 
 
 class MDCATH(Dataset):
-    def __init__(
-        self,
-        root: Union[str, Path],
-        lagtime: int = 1,
-        source_file: str = "mdcath_source.h5",
-        file_basename: str = "mdcath_dataset",
-        numAtoms: Optional[int] = 5000,
-        numNoHAtoms: Optional[int] = None,
-        numResidues: Optional[int] = 1000,
-        temperatures: List[str] = None,
-        skip_frames: int = 1,
-        pdb_list: Optional[Union[List[str], str]] = None,
-        min_gyration_radius: Optional[float] = None,
-        max_gyration_radius: Optional[float] = None,
-        alpha_beta_coil: Optional[Tuple] = None,
-        solid_ss: Optional[float] = None,
-        numFrames: Optional[int] = None,
-        cutoff_ang: float = 7.0,
-    ):
+    def __init__(self, data_args: MDCATHDataArgs):
         """mdCATH dataset class for MD trajectories with temporal lag support.
 
         Parameters:
         -----------
-        root: str or Path
-            Root directory where the dataset should be stored.
-        lagtime: int
-            Number of frames between current and lagged observation. Default is 1.
-        source_file: str
-            Name of the source file with protein structure information. Default is "mdcath_source.h5".
-        file_basename: str
-            Base name of the hdf5 files. Default is "mdcath_dataset".
-        numAtoms: int
-            Max number of atoms in the protein structure.
-        numNoHAtoms: int
-            Max number of non-hydrogen atoms. Default is None.
-        numResidues: int
-            Max number of residues in the protein structure.
-        temperatures: list
-            List of temperatures (in Kelvin) to include. Default is ["348"].
-            Available: ['320', '348', '379', '413', '450']
-        skip_frames: int
-            Number of frames to skip in the trajectory. Default is 1.
-        pdb_list: list or str
-            List of PDB IDs or path to file with PDB IDs. If None, all available PDBs loaded.
-        min_gyration_radius: float
-            Minimum gyration radius (in nm). Default is None.
-        max_gyration_radius: float
-            Maximum gyration radius (in nm). Default is None.
-        alpha_beta_coil: tuple
-            Minimum percentage of alpha-helix, beta-sheet and coil residues. Default is None.
-        solid_ss: float
-            Minimum percentage of solid secondary structure (alpha + beta)/total * 100. Default is None.
-        numFrames: int
-            Minimum number of frames in trajectory. Default is None.
-        cutoff_ang: float
-            Cutoff distance in angstroms for neighbor calculations. Default is 7.0.
+        data_args: MDCATHDataArgs
         """
         super().__init__()
 
         self.url = "https://huggingface.co/datasets/compsciencelab/mdCATH/resolve/main/"
-        self.root = Path(root)
+        self.data_args = data_args
+        self.root = self._parse_datapath(self.data_args.data_path)
         self.root.mkdir(parents=True, exist_ok=True)
 
-        self.source_file = source_file
-        self.file_basename = file_basename
-        self.lagtime = lagtime
-        self.numAtoms = numAtoms
-        self.numNoHAtoms = numNoHAtoms
-        self.numResidues = numResidues
-        self.temperatures = temperatures if temperatures else ["348"]
-        self.temperatures = [str(temp) for temp in self.temperatures]
-        self.skip_frames = skip_frames
-        self.pdb_list = load_pdb_list(pdb_list) if pdb_list is not None else None
-        self.min_gyration_radius = min_gyration_radius
-        self.max_gyration_radius = max_gyration_radius
-        self.alpha_beta_coil = alpha_beta_coil
-        self.numFrames = numFrames
-        self.solid_ss = solid_ss
-        self.cutoff = cutoff_ang
+        self.source_file = self.data_args.source_file
+        self.file_basename = self.data_args.file_basename
+        self.lagtime = self.data_args.lagtime
+        self.numAtoms = self.data_args.numAtoms
+        self.numNoHAtoms = self.data_args.numNoHAtoms
+        self.numResidues = self.data_args.numResidues
+        self.remove_hydrogen_atoms = self.data_args.remove_hydrogen_atoms
+
+        self.temperatures = self.data_args.temperatures
+        if isinstance(self.temperatures, str):
+            self.temperatures = [self.temperatures]
+        self.skip_frames = self.data_args.skip_frames
+        self.pdb_list = load_pdb_list(self.data_args.pdb_list)
+        self.min_gyration_radius = self.data_args.min_gyration_radius
+        self.max_gyration_radius = self.data_args.max_gyration_radius
+        self.alpha_beta_coil = self.data_args.alpha_beta_coil
+        self.numFrames = self.data_args.numFrames
+        self.solid_ss = self.data_args.solid_ss
+        self.cutoff = self.data_args.cutoff_ang
 
         # Initialize dataset
         self._ensure_source_file()
@@ -132,6 +93,19 @@ class MDCATH(Dataset):
                 self._log_info()
         else:
             self._log_info()
+
+    def _parse_datapath(self, data_path: str | None) -> Path:
+        if data_path is None:
+            root = os.environ.get("MDCATH_DATA_PATH")
+            if root is None:
+                raise ValueError(
+                    "data_path unspecified, and not found in environment variables."
+                )
+            else:
+                root = Path(root)  # ty:ignore[invalid-assignment]
+        else:
+            root = Path(data_path)  # ty:ignore[invalid-assignment]
+        return root
 
     def _log_info(self):
         print(f"Total number of domains: {len(self.processed.keys())}")
@@ -360,9 +334,7 @@ class MDCATH(Dataset):
         """Return number of valid (frame, frame+lag) pairs."""
         return len(self.idx)
 
-    def __getitem__(
-        self, index: int, remove_hydrogen_atoms: bool = True
-    ) -> Dict[str, torch.Tensor]:
+    def __getitem__(self, index: int):
         """Get a pair of configurations separated by lagtime.
 
         Par
@@ -391,6 +363,7 @@ class MDCATH(Dataset):
                 z = z[mask]
                 coords = coords[mask]
                 forces = forces[mask]
+
             data[key] = {
                 "z": torch.tensor(z, dtype=torch.long),
                 "pos": torch.tensor(coords, dtype=torch.float32),
@@ -402,7 +375,7 @@ class MDCATH(Dataset):
             }
         # paranoic assert
         assert torch.all(data["item"]["z"] == data["item_lag"]["z"]).item()
-        return data
+        return Data(**data)
 
     def get_trajectory_info(self) -> Dict:
         """Get information about all trajectories in the dataset."""
@@ -419,3 +392,40 @@ class MDCATH(Dataset):
             ]
 
         return info
+
+
+class MDCATHDataModule(LightningDataModule):
+    def __init__(
+        self,
+        args: TrainerArgs,
+        data_args: MDCATHDataArgs,
+        num_workers: int,
+    ):
+        super().__init__()
+        self.args = args
+        self.data_args = data_args
+        self.data_path = self.parse_datapath(self.data_args.data_path)
+        self.num_workers = num_workers
+
+    def setup(self, stage):
+        self.dataset = MDCATH(
+            root=self.data_path,
+            lagtime=self.data_args.lagtime,
+        )
+
+    def state_dict(self):
+        state = {"data_args": asdict(self.data_args), "num_workers": self.num_workers}
+        return state
+
+    def load_state_dict(self, state_dict):
+        self.data_args = MDCATHDataArgs(**state_dict["data_args"])
+        self.num_workers = state_dict["num_workers"]
+        self.data_path = self.parse_datapath(self.data_args.data_path)
+
+    def train_dataloader(self):
+        return DataLoader(
+            self.dataset,
+            batch_size=self.args.batch_size,
+            shuffle=True,
+            num_workers=self.num_workers,
+        )

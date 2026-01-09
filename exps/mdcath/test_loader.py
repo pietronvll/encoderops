@@ -10,7 +10,25 @@ from src.mdcath import MDCATH
 if __name__ == "__main__":
     data_path = Path(os.environ["DATA_PATH"]) / "mdcath"
     logger.info(f"Using data path {data_path}")
-    domains = ["12asA00", "153lA00", "16pkA02", "1a02F00"]
+    domains = [
+        "12asA00",
+        "153lA00",
+        "16pkA02",
+        "1a02F00",
+        "1a05A00",
+        "1a0aA00",
+        "1a0hA01",
+        "1a0rP01",
+        "1a0sP00",
+        "1a15A00",
+        "1a1zA00",
+        "1a2nA02",
+        "1a39A00",
+        "1a3dA00",
+        "1a3oA00",
+        "1a48A01",
+        "1a5cA00",
+    ]
     mdcath = MDCATH(root=data_path, lagtime=15, pdb_list=domains)
     # Measure throughput:
     start = perf_counter()
