@@ -1,7 +1,7 @@
 # Copyright Universitat Pompeu Fabra 2020-2023  https://www.compscience.org
 # Distributed under the MIT License.
 # (See accompanying file README.md file or copy at http://opensource.org/licenses/MIT)
-
+import asyncio
 import math
 import os
 import urllib.request
@@ -13,8 +13,17 @@ from typing import Dict, List, Optional, Tuple, Union
 import h5py
 import numpy as np
 import torch
+from rich.console import Group
+from rich.live import Live
+from rich.progress import (
+    BarColumn,
+    DownloadColumn,
+    Progress,
+    TextColumn,
+    TimeRemainingColumn,
+    TransferSpeedColumn,
+)
 from torch.utils.data import Dataset
-from tqdm import tqdm
 
 
 def load_pdb_list(pdb_list):
@@ -145,19 +154,74 @@ class MDCATH(Dataset):
                 opj(self.url, self.source_file), str(source_path)
             )
 
-    def download(self):
+    def download(self, max_concurrent: int = 4):
         """Download required HDF5 files for selected PDB IDs."""
-        for pdb_id in self.processed.keys():
-            file_name = f"{self.file_basename}_{pdb_id}.h5"
-            file_path = self.root / file_name
-            if not file_path.exists():
-                assert self.file_basename == "mdcath_dataset", (
-                    "Only 'mdcath_dataset' is supported as file_basename for download."
+
+        overall_progress = Progress(
+            TextColumn("[bold blue]{task.fields[filename]}"),
+            BarColumn(),
+            TextColumn("{task.completed}/{task.total}"),
+            TimeRemainingColumn(),
+        )
+
+        file_progress = Progress(
+            TextColumn("[bold blue]{task.fields[filename]}"),
+            BarColumn(),
+            DownloadColumn(),
+            TransferSpeedColumn(),
+            TimeRemainingColumn(),
+        )
+
+        progress_group = Group(overall_progress, file_progress)
+
+        overall_task_id = overall_progress.add_task(
+            "overall", filename="Overall Progress", total=len(self.processed)
+        )
+
+        async def _download_file(pdb_id, semaphore):
+            async with semaphore:
+                file_name = f"{self.file_basename}_{pdb_id}.h5"
+                file_path = self.root / file_name
+                if not file_path.exists():
+                    if self.file_basename != "mdcath_dataset":
+                        raise AssertionError(
+                            "Only 'mdcath_dataset' is supported as file_basename for download."
+                        )
+
+                    task_id = file_progress.add_task(
+                        "download", filename=file_name, total=None
+                    )
+
+                    def hook(count, block_size, total_size):
+                        file_progress.update(
+                            task_id,
+                            total=total_size if total_size != -1 else None,
+                            completed=count * block_size,
+                        )
+
+                    try:
+                        await asyncio.to_thread(
+                            urllib.request.urlretrieve,
+                            opj(self.url, "data", file_name),
+                            str(file_path),
+                            hook,
+                        )
+                    finally:
+                        file_progress.remove_task(task_id)
+                overall_progress.advance(overall_task_id)
+
+        async def _download_all():
+            semaphore = asyncio.Semaphore(max_concurrent)
+            with Live(progress_group):
+                await asyncio.gather(
+                    *[
+                        _download_file(pdb_id, semaphore)
+                        for pdb_id in self.processed.keys()
+                    ]
                 )
-                print(f"Downloading {file_name}")
-                urllib.request.urlretrieve(
-                    opj(self.url, "data", file_name), str(file_path)
-                )
+
+        # Run the asynchronous download
+        asyncio.run(_download_all())
 
     def calculate_dataset_size(self):
         """Calculate total dataset size in MB."""
@@ -179,7 +243,7 @@ class MDCATH(Dataset):
         with h5py.File(source_info_path, "r") as file:
             domains = file.keys() if self.pdb_list is None else self.pdb_list
 
-            for pdb_id in tqdm(domains, desc="Processing mdcath source"):
+            for pdb_id in domains:
                 if pdb_id not in file:
                     continue
 
