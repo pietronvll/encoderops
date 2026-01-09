@@ -159,6 +159,7 @@ class Configs:
     wandb_entity: str | None = None
     offline: bool = False
     num_devices: int = -1
+    num_nodes: int = 1
     dataloader_workers: int = 8
 
 
@@ -327,6 +328,30 @@ defaults = {
             data_args=SSTDataArgs(history_len=0),
             wandb_project="encoderops-ENSO",
             num_devices=1,
+            num_nodes=1
+        ),
+    ),
+    "MDCATH": (
+        "MDCATH",
+        Configs(
+            trainer_args=TrainerArgs(
+                latent_dim=64,
+                encoder_lr=1e-2,
+                linear_lr=1e-2,
+                min_encoder_lr=1e-4,
+                epochs=1,
+                batch_size=128,
+                max_grad_norm=0.2,
+                normalize_lin=False,
+                regularization=1e-5,
+                normalize_latents=None,
+            ),
+            model_args=SchNetModelArgs(),
+            data_args=MDCATHDataArgs(
+                lagtime=500,
+            ),
+            wandb_project="encoderops-MDCATH",
+            num_devices=-1,
         ),
     ),
 }

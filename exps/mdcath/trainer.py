@@ -1,4 +1,4 @@
-# uv run python -m exps.trpcage.trainer trp-cage --help
+# uv run python -m exps.mdcath.trainer mdcath --help
 
 from dataclasses import asdict
 
@@ -8,13 +8,13 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 
 from src.configs import Configs, defaults
-from src.data import DESRESDataModule
+from src.mdcath import MDCATHDataModule
 from src.model import EvolutionOperator
 from src.modules import SchNet
 
 
 def main(cfg: Configs):
-    datamodule = DESRESDataModule(
+    datamodule = MDCATHDataModule(
         cfg.trainer_args, cfg.data_args, cfg.dataloader_workers
     )
     datamodule.setup("fit")
@@ -36,6 +36,7 @@ def main(cfg: Configs):
         strategy="ddp" if cfg.trainer_args.loss in ["kl_DV", "kl_NWJ", "l2"] else "ddp_find_unused_parameters_true",
         accelerator="cuda",
         devices=cfg.num_devices,
+        num_nodes=cfg.num_nodes,
         max_epochs=cfg.trainer_args.epochs,
         log_every_n_steps=10,
         enable_model_summary=True,
