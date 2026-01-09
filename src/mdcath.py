@@ -30,7 +30,21 @@ from torch.utils.data import Dataset
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 
+from mlcolvar.data.graph.atomic import Configuration
+
 from src.configs import MDCATHDataArgs, TrainerArgs
+
+def configuration_from_h5():
+    configuration = Configuration(
+            atomic_numbers=atomic_numbers,
+            positions=trajectory.xyz[i] * 10,
+            cell=cell[i] * 10,
+            pbc=pbc,
+            graph_labels=label,
+            node_labels=None,  # TODO: Add supports for per-node labels.
+            system=system_atoms,
+            environment=environment_atoms
+        )
 
 
 def load_pdb_list(pdb_list):
