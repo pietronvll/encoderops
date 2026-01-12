@@ -159,7 +159,7 @@ def benchmark(
     num_gpus: int = 1,
     num_nodes: int = 1,
     epochs: int = 1,
-    batch_size: int = 128,
+    batch_size: int = 4,
     dataloader_workers: int = 8,
     pdb_list: list[str] | None = None,
     temperature: str = "348",
