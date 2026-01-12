@@ -74,13 +74,15 @@ class ThroughputCallback(Callback):
         # Count atoms in current batch (each sample has item and item_lag)
         # batch.item.z contains atomic numbers, shape: (total_atoms_in_batch,)
         atoms_in_batch = 0
-        if hasattr(batch, "item") and hasattr(batch.item, "z"):
-            # Both item and item_lag have the same number of atoms
-            atoms_in_batch = batch.item.z.shape[0] * 2  # x2 for item + item_lag
+        if "item" in batch.keys():
+            atoms_in_batch = batch["item"].positions.shape[0]
             self.total_atoms += atoms_in_batch
 
         # Periodic logging
-        if self.total_batches % self.log_every_n_batches == 0 and self.epoch_start_time is not None:
+        if (
+            self.total_batches % self.log_every_n_batches == 0
+            and self.epoch_start_time is not None
+        ):
             elapsed = perf_counter() - self.epoch_start_time
             # Gather atoms from all ranks for accurate throughput
             if dist.is_initialized():
@@ -240,7 +242,9 @@ def benchmark(
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    throughput_log_file = output_path / f"throughput_{num_nodes}nodes_{num_gpus}gpus_{timestamp}.json"
+    throughput_log_file = (
+        output_path / f"throughput_{num_nodes}nodes_{num_gpus}gpus_{timestamp}.json"
+    )
 
     # Setup callback
     throughput_callback = ThroughputCallback(
