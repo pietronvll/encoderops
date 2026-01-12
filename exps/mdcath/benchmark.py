@@ -162,6 +162,7 @@ def benchmark(
     pdb_list: list[str] | None = None,
     temperature: str = "348",
     output_dir: str = "exps/mdcath/benchmark_results",
+    dry_run: bool = False,
 ):
     """
     Benchmark MDCATH training throughput.
@@ -175,6 +176,7 @@ def benchmark(
         pdb_list: List of PDB IDs to use (default: small subset for testing)
         temperature: Single temperature to use (default: 348K)
         output_dir: Directory to save benchmark results
+        dry_run: If True, only download data and skip training (for login nodes without GPU)
     """
     # Use default PDB list if none provided
     if pdb_list is None:
@@ -214,11 +216,25 @@ def benchmark(
         dataloader_workers=dataloader_workers,
     )
 
-    # Setup data module
+    # Setup data module (this triggers download of h5 files)
     datamodule = MDCATHDataModule(
         cfg.trainer_args, cfg.data_args, cfg.dataloader_workers
     )
     datamodule.setup("fit")
+
+    # Dry run mode: just download data and exit
+    if dry_run:
+        print("\n" + "=" * 60)
+        print("DRY RUN COMPLETE")
+        print("=" * 60)
+        print("Dataset initialized successfully:")
+        print(f"  Samples: {len(datamodule.dataset)}")
+        print(f"  Domains: {len(datamodule.dataset.processed)}")
+        print(f"  Temperature: {temperature}K")
+        print(f"  PDB list: {pdb_list}")
+        print(f"\nData files downloaded to: {cfg.data_args.data_path}")
+        print("=" * 60 + "\n")
+        return None
 
     # Setup output path for intermediate results
     output_path = Path(output_dir)
