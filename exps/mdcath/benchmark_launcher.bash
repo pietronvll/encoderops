@@ -8,22 +8,23 @@
 #SBATCH --partition=boost_usr_prod  # partition to use
 #SBATCH --time=4:00:00              # max time HH:MM:SS
 #SBATCH --nodes=2                   # number of nodes (override with --nodes)
-#SBATCH --ntasks-per-node=4         # one task per node for distributed training
+#SBATCH --ntasks-per-node=4         # 4 tasks per node (one per GPU)
 #SBATCH --gres=gpu:4                # GPUs per node (override with --gpus)
 #SBATCH --cpus-per-task=8
 #SBATCH --job-name=mdcath-benchmark
+#SBATCH --output=logs/slurm-%j.out
+#SBATCH --error=logs/slurm-%j.err
 
 ############################
 # Parse command line arguments
 ############################
 
-NUM_GPUS=1
+NUM_GPUS=4
 NUM_NODES=1
 EPOCHS=1
 BATCH_SIZE=128
-BENCHMARK_NAME="benchmark"
-OFFLINE=false
 DATALOADER_WORKERS=8
+TEMPERATURE="348"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -43,16 +44,12 @@ while [[ $# -gt 0 ]]; do
             BATCH_SIZE="$2"
             shift 2
             ;;
-        --name)
-            BENCHMARK_NAME="$2"
-            shift 2
-            ;;
-        --offline)
-            OFFLINE=true
-            shift
-            ;;
         --workers)
             DATALOADER_WORKERS="$2"
+            shift 2
+            ;;
+        --temperature)
+            TEMPERATURE="$2"
             shift 2
             ;;
         *)
@@ -67,16 +64,20 @@ done
 ############################
 
 export OMP_NUM_THREADS=1
-export CUDA_VISIBLE_DEVICES=0,1,2,3
+
+# Create logs directory if it doesn't exist
+mkdir -p logs
 
 echo "========== MDCATH Benchmark =========="
+echo "Hostname: $(hostname)"
+echo "Date: $(date)"
 echo "GPUs per node: $NUM_GPUS"
 echo "Number of nodes: $NUM_NODES"
+echo "Total GPUs: $((NUM_GPUS * NUM_NODES))"
 echo "Epochs: $EPOCHS"
 echo "Batch size: $BATCH_SIZE"
-echo "Benchmark name: $BENCHMARK_NAME"
 echo "Dataloader workers: $DATALOADER_WORKERS"
-echo "Offline mode: $OFFLINE"
+echo "Temperature: $TEMPERATURE"
 echo "======================================"
 
 ############################
@@ -84,23 +85,22 @@ echo "======================================"
 ############################
 
 # Build command
-CMD="uv run --env-file=.env -- python -m exps.mdcath.benchmark"
-CMD="$CMD --num_gpus=$NUM_GPUS"
-CMD="$CMD --num_nodes=$NUM_NODES"
+CMD="python -m exps.mdcath.benchmark"
+CMD="$CMD --num-gpus=$NUM_GPUS"
+CMD="$CMD --num-nodes=$NUM_NODES"
 CMD="$CMD --epochs=$EPOCHS"
-CMD="$CMD --batch_size=$BATCH_SIZE"
-CMD="$CMD --benchmark_name=$BENCHMARK_NAME"
-CMD="$CMD --dataloader_workers=$DATALOADER_WORKERS"
+CMD="$CMD --batch-size=$BATCH_SIZE"
+CMD="$CMD --dataloader-workers=$DATALOADER_WORKERS"
+CMD="$CMD --temperature=$TEMPERATURE"
 
-if [ "$OFFLINE" = true ]; then
-    CMD="$CMD --offline"
-fi
+echo "Command: $CMD"
+echo "======================================"
 
-# Use srun for distributed training
-if command -v srun &> /dev/null && [ ! -z "$SLURM_NODEID" ]; then
+# Use srun for distributed training on SLURM
+if command -v srun &> /dev/null && [ ! -z "$SLURM_JOB_ID" ]; then
     echo "Running with srun for distributed training..."
-    srun $CMD
+    uv run --env-file=.env -- srun $CMD
 else
-    echo "Running locally (srun not available or not in SLURM job)..."
-    $CMD
+    echo "Running locally (not in SLURM job)..."
+    uv run --env-file=.env -- $CMD
 fi

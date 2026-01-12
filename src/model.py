@@ -49,7 +49,7 @@ class EvolutionOperator(lightning.LightningModule):
             self.normalizer = torch.nn.Sequential(batch_norm, euclidnorm)
         else:  # None
             self.normalizer = torch.nn.Sequential(batch_norm)
-        
+
         self.linear = torch.nn.Linear(d, d, bias=False)
 
         self._global_step = 0
@@ -188,10 +188,13 @@ class EvolutionOperator(lightning.LightningModule):
 
     def on_train_start(self):
         if self.global_rank == 0:
-            logger.info(f"Checkpoints at {self.trainer.checkpoint_callback.dirpath}")
-            for k, v in asdict(self.trainer_args).items():
-                if k not in self.logger.experiment.config.keys():
-                    self.logger.experiment.config[k] = v
+            if self.trainer.checkpoint_callback is not None:
+                logger.info(
+                    f"Checkpoints at {self.trainer.checkpoint_callback.dirpath}"
+                )
+                for k, v in asdict(self.trainer_args).items():
+                    if k not in self.logger.experiment.config.keys():
+                        self.logger.experiment.config[k] = v
 
     def configure_optimizers(self):
         """

@@ -16,6 +16,8 @@ import numpy as np
 import torch
 from lightning import LightningDataModule
 from loguru import logger
+from mlcolvar.data.graph.atomic import AtomicNumberTable, Configuration
+from mlcolvar.data.graph.utils import _create_dataset_from_configuration
 from rich.console import Group
 from rich.live import Live
 from rich.progress import (
@@ -27,24 +29,9 @@ from rich.progress import (
     TransferSpeedColumn,
 )
 from torch.utils.data import Dataset
-from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 
-from mlcolvar.data.graph.atomic import Configuration
-
 from src.configs import MDCATHDataArgs, TrainerArgs
-
-def configuration_from_h5():
-    configuration = Configuration(
-            atomic_numbers=atomic_numbers,
-            positions=trajectory.xyz[i] * 10,
-            cell=cell[i] * 10,
-            pbc=pbc,
-            graph_labels=label,
-            node_labels=None,  # TODO: Add supports for per-node labels.
-            system=system_atoms,
-            environment=environment_atoms
-        )
 
 
 def load_pdb_list(pdb_list):
@@ -100,6 +87,10 @@ class MDCATH(Dataset):
         self._filter_and_prepare_data()
         self.download()
         self._setup_idx()
+
+        # Initialize z_table once for the entire dataset
+        # For now, we'll use common elements up to 100
+        self.z_table = AtomicNumberTable(list(range(1, 101)))
 
         # Calculate total size
         self.total_size_mb = self.calculate_dataset_size()
@@ -323,8 +314,8 @@ class MDCATH(Dataset):
 
     def _load_frame(
         self, file_path: str, pdb_id: str, temp: str, replica: str, frame_idx: int
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Load atomic numbers, coordinates, and forces for a specific frame."""
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Load atomic numbers, coordinates, forces, and box for a specific frame."""
         actual_frame_idx = frame_idx * self.skip_frames
         slice_idxs = np.s_[actual_frame_idx : actual_frame_idx + 1]
 
@@ -337,6 +328,9 @@ class MDCATH(Dataset):
             group["coords"].read_direct(coords, slice_idxs)
             group["forces"].read_direct(forces, slice_idxs)
 
+            # Load box information
+            box = group["box"][:]  # shape: (3, 3)
+
             # coords and forces shape (num_atoms, 3)
             assert coords.shape[0] == forces.shape[0], (
                 f"Number of frames mismatch between coords and forces: {group['coords'].shape[0]} vs {group['forces'].shape[0]}"
@@ -345,22 +339,20 @@ class MDCATH(Dataset):
                 f"Number of atoms mismatch between coords and z: {group['coords'].shape[1]} vs {z.shape[0]}"
             )
 
-        return z, coords, forces
+        return z, coords, forces, box
 
     def __len__(self) -> int:
         """Return number of valid (frame, frame+lag) pairs."""
         return len(self.idx)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx):  # ty:ignore[invalid-method-override]
         """Get a pair of configurations separated by lagtime.
-
-        Par
 
         Returns:
         --------
         dict with keys:
-            - 'item': dict with 'z', 'pos', 'neg_dy', 'info' for current frame
-            - 'item_lag': dict with 'z', 'pos', 'neg_dy', 'info' for lagged frame
+            - 'item': PyTorch Geometric Data object for current frame
+            - 'item_lag': PyTorch Geometric Data object for lagged frame
         """
         if isinstance(idx, (slice, list, tuple)):
             raise NotImplementedError("Only integer indexing is supported")
@@ -368,34 +360,48 @@ class MDCATH(Dataset):
         pdb_id, file_path, temp, replica, frame_idx = self.idx[idx]
 
         data = {}
-        for frame_idx, key in zip(
+        for frame_idx_load, key in zip(
             [frame_idx, frame_idx + self.lagtime], ["item", "item_lag"]
         ):
             # Load frame
-            z, coords, forces = self._load_frame(
-                file_path, pdb_id, temp, replica, frame_idx
+            z, coords, forces, box = self._load_frame(
+                file_path, pdb_id, temp, replica, frame_idx_load
             )
             if self.remove_hydrogen_atoms:
                 mask = z != 1
                 z = z[mask]
                 coords = coords[mask]
                 forces = forces[mask]
-            # !! Todo use from mlcolvar.data.graph.utils._create_dataset_from_configuration
-            # data[key] = torch_geometric.data.Data object instead of a plain dict as below
-            # This is important to compute the connectivity of the graph
-            # See CalixareneDataset to see how it was implemented
-            data[key] = {
-                "z": torch.tensor(z, dtype=torch.long),
-                "pos": torch.tensor(coords, dtype=torch.float32),
-                "neg_dy": torch.tensor(forces, dtype=torch.float32),
-                "info": f"{pdb_id}_{temp}_{replica}_{frame_idx}",
-                "pdb_id": pdb_id,
-                "temp": temp,
-                "replica": replica,
-            }
-        # paranoic assert
-        assert torch.all(data["item"]["z"] == data["item_lag"]["z"]).item()
-        return Data(**data)
+
+            # Create Configuration object
+            config = Configuration(
+                atomic_numbers=z,
+                positions=coords,  # H5 already in Angstroms
+                cell=box,  # box is (3,3) matrix in Angstroms
+                pbc=(True, True, True),  # Assuming periodic boundary conditions
+                node_labels=forces,  # Using forces as node labels
+                graph_labels=None,
+                weight=1.0,
+                system=None,
+                environment=None,
+            )
+
+            # Convert Configuration to PyTorch Geometric Data
+            pyg_data = _create_dataset_from_configuration(
+                config=config,
+                z_table=self.z_table,
+                cutoff=self.cutoff,
+                buffer=0.0,
+            )
+
+            # Add metadata
+            pyg_data.info = f"{pdb_id}_{temp}_{replica}_{frame_idx_load}"
+            pyg_data.pdb_id = pdb_id
+            pyg_data.temp = temp
+            pyg_data.replica = replica
+
+            data[key] = pyg_data
+        return data
 
     def get_trajectory_info(self) -> Dict:
         """Get information about all trajectories in the dataset."""

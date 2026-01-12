@@ -94,7 +94,7 @@ class MDCATHDataArgs:
     "Max number of non-hydrogen atoms. Default is None."
     numResidues: int | None = 1000
     "Max number of residues in the protein structure."
-    temperatures: list[str] | str = '348'
+    temperatures: list[str] | str = "348"
     "List of temperatures (in Kelvin) to include. Default is ['348']. Available: ['320', '348', '379', '413', '450']"
     skip_frames: int = 1
     pdb_list: None | list[str] | str = None
@@ -154,7 +154,13 @@ class SSTDataArgs:
 class Configs:
     trainer_args: TrainerArgs
     model_args: SchNetModelArgs | MLPModelArgs | ResNet18ModelArgs
-    data_args: DESRESDataArgs | Lorenz63DataArgs | CalixareneDataArgs | SSTDataArgs
+    data_args: (
+        DESRESDataArgs
+        | Lorenz63DataArgs
+        | CalixareneDataArgs
+        | SSTDataArgs
+        | MDCATHDataArgs
+    )
     wandb_project: str
     wandb_entity: str | None = None
     offline: bool = False
@@ -328,7 +334,7 @@ defaults = {
             data_args=SSTDataArgs(history_len=0),
             wandb_project="encoderops-ENSO",
             num_devices=1,
-            num_nodes=1
+            num_nodes=1,
         ),
     ),
     "MDCATH": (
@@ -348,7 +354,8 @@ defaults = {
             ),
             model_args=SchNetModelArgs(),
             data_args=MDCATHDataArgs(
-                lagtime=500,
+                lagtime=1,
+                cutoff_ang=3.0,
             ),
             wandb_project="encoderops-MDCATH",
             num_devices=-1,
