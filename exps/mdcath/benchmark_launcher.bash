@@ -1,19 +1,7 @@
 #!/bin/bash
 # SLURM launcher for MDCATH benchmark on Leonardo/CINECA
-# Usage: sbatch benchmark_launcher.bash --gpus 4 --nodes 2 [other params]
-# Or: bash benchmark_launcher.bash (for local testing)
-
-# SLURM Configuration
-#SBATCH --account=IscrB_ProAmmo     # project account
-#SBATCH --partition=boost_usr_prod  # partition to use
-#SBATCH --time=4:00:00              # max time HH:MM:SS
-#SBATCH --nodes=2                   # number of nodes (override with --nodes)
-#SBATCH --ntasks-per-node=4         # 4 tasks per node (one per GPU)
-#SBATCH --gres=gpu:4                # GPUs per node (override with --gpus)
-#SBATCH --cpus-per-task=8
-#SBATCH --job-name=mdcath-benchmark
-#SBATCH --output=logs/slurm-%j.out
-#SBATCH --error=logs/slurm-%j.err
+# Submit via: python exps/mdcath/submit_scaling_study.py
+# Or run locally: bash exps/mdcath/benchmark_launcher.bash --gpus 1
 
 ############################
 # Parse command line arguments

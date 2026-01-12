@@ -1,0 +1,12 @@
+{
+  "batch_logs": [
+    {
+      "epoch": 0,
+      "batch": 100,
+      "elapsed_sec": 106.93,
+      "atoms_processed": 4749827,
+      "throughput_atoms_per_sec": 44421.6
+    }
+  ],
+  "epoch_logs": []
+}

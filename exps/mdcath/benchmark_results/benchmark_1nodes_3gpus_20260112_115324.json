@@ -1,0 +1,37 @@
+{
+  "timestamp": "2026-01-12T12:02:48.374538",
+  "config": {
+    "num_gpus": 3,
+    "num_nodes": 1,
+    "total_gpus": 3,
+    "batch_size": 4,
+    "epochs": 1,
+    "dataloader_workers": 8,
+    "temperature": "348",
+    "pdb_list": [
+      "12asA00",
+      "153lA00",
+      "16pkA02",
+      "1a02F00",
+      "1a05A00",
+      "1a0aA00"
+    ]
+  },
+  "dataset": {
+    "num_samples": 8840,
+    "num_domains": 4
+  },
+  "results": {
+    "total_time_sec": 564.2226521470584,
+    "time_per_epoch_sec": 564.2226521470584,
+    "total_atoms_processed": 8732006,
+    "throughput_atoms_per_sec": 15508.591506267941,
+    "epoch_time_sec": 563.0431362171657
+  },
+  "full_dataset_estimates": {
+    "single_temp_total_atoms": 13554843059,
+    "estimated_epoch_time_sec": 874021.5417706814,
+    "estimated_epoch_time_hours": 242.78376160296705,
+    "gpu_hours_per_epoch": 728.3512848089011
+  }
+}

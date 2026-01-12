@@ -1,0 +1,75 @@
+{
+  "batch_logs": [
+    {
+      "epoch": 0,
+      "batch": 100,
+      "elapsed_sec": 74.74,
+      "atoms_processed": 796201,
+      "throughput_atoms_per_sec": 10652.9
+    },
+    {
+      "epoch": 0,
+      "batch": 200,
+      "elapsed_sec": 140.67,
+      "atoms_processed": 1586262,
+      "throughput_atoms_per_sec": 11276.5
+    },
+    {
+      "epoch": 0,
+      "batch": 300,
+      "elapsed_sec": 210.15,
+      "atoms_processed": 2382482,
+      "throughput_atoms_per_sec": 11337.3
+    },
+    {
+      "epoch": 0,
+      "batch": 400,
+      "elapsed_sec": 284.64,
+      "atoms_processed": 3170113,
+      "throughput_atoms_per_sec": 11137.3
+    },
+    {
+      "epoch": 0,
+      "batch": 500,
+      "elapsed_sec": 353.16,
+      "atoms_processed": 3970652,
+      "throughput_atoms_per_sec": 11243.2
+    },
+    {
+      "epoch": 0,
+      "batch": 600,
+      "elapsed_sec": 423.57,
+      "atoms_processed": 4749827,
+      "throughput_atoms_per_sec": 11213.7
+    },
+    {
+      "epoch": 0,
+      "batch": 700,
+      "elapsed_sec": 495.56,
+      "atoms_processed": 5529252,
+      "throughput_atoms_per_sec": 11157.6
+    },
+    {
+      "epoch": 0,
+      "batch": 800,
+      "elapsed_sec": 564.92,
+      "atoms_processed": 6292861,
+      "throughput_atoms_per_sec": 11139.5
+    },
+    {
+      "epoch": 0,
+      "batch": 900,
+      "elapsed_sec": 635.16,
+      "atoms_processed": 7078662,
+      "throughput_atoms_per_sec": 11144.6
+    },
+    {
+      "epoch": 0,
+      "batch": 1000,
+      "elapsed_sec": 704.14,
+      "atoms_processed": 7863885,
+      "throughput_atoms_per_sec": 11168.0
+    }
+  ],
+  "epoch_logs": []
+}

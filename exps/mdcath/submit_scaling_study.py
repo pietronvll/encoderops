@@ -27,7 +27,7 @@ class ScalingStudySubmitter:
     def __init__(
         self,
         epochs: int = 1,
-        batch_size: int = 128,
+        batch_size: int = 4,
         workers: int = 8,
         dry_run: bool = False,
         job_prefix: str = "scaling_study",
@@ -77,12 +77,18 @@ class ScalingStudySubmitter:
             "--output=logs/slurm-%j.out",
             "--error=logs/slurm-%j.err",
             "exps/mdcath/benchmark_launcher.bash",
-            f"--gpus={gpus_per_node}",
-            f"--nodes={nodes}",
-            f"--epochs={self.epochs}",
-            f"--batch-size={self.batch_size}",
-            f"--workers={self.workers}",
-            f"--temperature={self.temperature}",
+            "--gpus",
+            str(gpus_per_node),
+            "--nodes",
+            str(nodes),
+            "--epochs",
+            str(self.epochs),
+            "--batch-size",
+            str(self.batch_size),
+            "--workers",
+            str(self.workers),
+            "--temperature",
+            str(self.temperature),
         ]
 
         cmd_str = " ".join(sbatch_cmd)
@@ -199,8 +205,8 @@ def main():
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=128,
-        help="Batch size (default: 128)",
+        default=4,
+        help="Batch size (default: 4)",
     )
     parser.add_argument(
         "--workers",
