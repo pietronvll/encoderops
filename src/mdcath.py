@@ -374,10 +374,12 @@ class MDCATH(Dataset):
                 forces = forces[mask]
 
             # Create Configuration object
+            # Note: mdCATH H5 files store coords in Angstroms but box in nanometers
+            # Convert box to Angstroms to match coordinate units
             config = Configuration(
                 atomic_numbers=z,
-                positions=coords,  # H5 already in Angstroms
-                cell=box,  # box is (3,3) matrix in Angstroms
+                positions=coords,  # H5 stores coords in Angstroms
+                cell=box * 10,  # H5 stores box in nm, convert to Angstroms
                 pbc=(True, True, True),  # Assuming periodic boundary conditions
                 node_labels=forces,  # Using forces as node labels
                 graph_labels=None,

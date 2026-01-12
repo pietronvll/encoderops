@@ -355,7 +355,7 @@ defaults = {
             model_args=SchNetModelArgs(),
             data_args=MDCATHDataArgs(
                 lagtime=1,
-                cutoff_ang=3.0,
+                cutoff_ang=7.0,
             ),
             wandb_project="encoderops-MDCATH",
             num_devices=-1,

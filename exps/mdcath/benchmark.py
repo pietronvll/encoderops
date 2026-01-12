@@ -98,6 +98,14 @@ class ThroughputCallback(Callback):
 
             throughput = global_atoms / elapsed if elapsed > 0 else 0
 
+            # Get GPU memory usage
+            if torch.cuda.is_available():
+                mem_allocated_gb = torch.cuda.memory_allocated() / 1e9
+                mem_reserved_gb = torch.cuda.memory_reserved() / 1e9
+                mem_max_allocated_gb = torch.cuda.max_memory_allocated() / 1e9
+            else:
+                mem_allocated_gb = mem_reserved_gb = mem_max_allocated_gb = 0.0
+
             if self._is_main_process():
                 log_entry = {
                     "epoch": trainer.current_epoch,
@@ -105,6 +113,9 @@ class ThroughputCallback(Callback):
                     "elapsed_sec": round(elapsed, 2),
                     "atoms_processed": global_atoms,
                     "throughput_atoms_per_sec": round(throughput, 1),
+                    "gpu_memory_allocated_gb": round(mem_allocated_gb, 3),
+                    "gpu_memory_reserved_gb": round(mem_reserved_gb, 3),
+                    "gpu_memory_max_allocated_gb": round(mem_max_allocated_gb, 3),
                 }
                 self.batch_logs.append(log_entry)
                 self._write_to_file()
