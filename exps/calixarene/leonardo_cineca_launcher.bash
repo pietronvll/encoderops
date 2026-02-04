@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --account=<your_account>     # project name
+#SBATCH --account=IscrC_LR4LSDS     # project name
 #SBATCH --partition=boost_usr_prod  # partition to be used
-#SBATCH --time 4:00:00              # format: HH:MM:SS
+#SBATCH --time 05:00:00              # format: HH:MM:SS
 #SBATCH --nodes=1                   # node
 #SBATCH --ntasks-per-node=4         # tasks out of 32
 #SBATCH --gres=gpu:4                # gpus per node out of 4
@@ -11,4 +11,4 @@
 export OMP_NUM_THREADS=1
 
 echo "========== calixarene training script $@=========="
-uv run --env-file=.env -- srun python -m exps.calixarene.trainer $@ --trainer_args.batch_size=256  --offline
+uv run --env-file=.env -- srun python -m exps.calixarene.trainer $@ --trainer_args.batch_size=256  --offline --trainer-args.loss=l2 --trainer-args.share-encoder --trainer-args.latent-dim=1024

@@ -233,12 +233,11 @@ class CalixareneDataModule(LightningDataModule):
                 repo_type="dataset",
                 local_dir=self.data_path,
             )
-
-    def setup(self, stage):
+    def _assemble_dataset(self, traj_ids):
         datasets = []
         atomic_numbers = []
         for molecule_id in self.data_args.molecule_ids:
-            for traj_id in self.data_args.traj_ids:
+            for traj_id in traj_ids:
                 ds = CalixareneDataset(
                     molecule_id=molecule_id,
                     data_path=self.data_path,
@@ -254,12 +253,16 @@ class CalixareneDataModule(LightningDataModule):
         molecule_ids = "-".join(self.data_args.molecule_ids)
         for ds in datasets:
             ds.z_table = z_table
-        self.dataset = ConcatDataset(datasets)
-        self.dataset.lagtime = self.data_args.lagtime
-        self.dataset.lagtime_ns = self.dataset.datasets[0].lagtime_ns
-        self.dataset.z_table = z_table
-        self.dataset.molecule_ids = molecule_ids
-
+        dataset = ConcatDataset(datasets)
+        dataset.lagtime = self.data_args.lagtime
+        dataset.lagtime_ns = dataset.datasets[0].lagtime_ns
+        dataset.z_table = z_table
+        dataset.molecule_ids = molecule_ids
+        return dataset
+    def setup(self, stage):
+        self.dataset = self._assemble_dataset(self.data_args.traj_ids)
+        self.val_dataset = self._assemble_dataset(self.data_args.val_traj_ids)
+        
     def state_dict(self):
         state = {"data_args": asdict(self.data_args), "num_workers": self.num_workers}
         return state
@@ -272,6 +275,13 @@ class CalixareneDataModule(LightningDataModule):
     def train_dataloader(self):
         return PyGDataLoader(
             self.dataset,
+            batch_size=self.args.batch_size,
+            shuffle=True,
+            num_workers=self.num_workers,
+        )
+    def val_dataloader(self):
+        return PyGDataLoader(
+            self.val_dataset,
             batch_size=self.args.batch_size,
             shuffle=True,
             num_workers=self.num_workers,

@@ -97,6 +97,8 @@ class CalixareneDataArgs:
     "Molecule IDs"
     traj_ids: Tuple[int, ...] = field(default_factory=lambda: tuple(range(2)))
     "Trajectory IDs"
+    val_traj_ids: Tuple[int, ...] = field(default_factory=lambda: tuple(range(2, 4)))
+    "Validation Trajectory IDs"
     lagtime: int = 1
     "Lagtime (in number of frames) used to generate lagged data"
     cutoff_ang: float = 7.0
@@ -170,6 +172,54 @@ defaults = {
                 lagtime=500,  # 100ns
             ),
             wandb_project="encoderops-2JOF",
+        ),
+    ),
+    "trp-cage-S": (
+        "TRP-cage Experiment with SchNet-S",
+        Configs(
+            trainer_args=TrainerArgs(
+                latent_dim=64,
+                encoder_lr=1e-2,
+                linear_lr=1e-2,
+                epochs=45,
+                batch_size=64,
+                max_grad_norm=0.2,
+                normalize_lin=False,
+                regularization=1e-5,
+                min_encoder_lr=1e-4,
+            ),
+            model_args=SchNetModelArgs(
+                n_layers=2, n_bases=16, n_filters=16, n_hidden_channels=32
+            ),
+            data_args=DESRESDataArgs(
+                protein_id="2JOF",
+                lagtime=500,  # 100ns
+            ),
+            wandb_project="encoderops-2JOF-S",
+        ),
+    ),
+    "trp-cage-L": (
+        "TRP-cage Experiment with SchNet-L",
+        Configs(
+            trainer_args=TrainerArgs(
+                latent_dim=64,
+                encoder_lr=1e-2,
+                linear_lr=1e-2,
+                epochs=45,
+                batch_size=64,
+                max_grad_norm=0.2,
+                normalize_lin=False,
+                regularization=1e-5,
+                min_encoder_lr=1e-4,
+            ),
+            model_args=SchNetModelArgs(
+                n_layers=3, n_bases=16, n_filters=64, n_hidden_channels=128
+            ),
+            data_args=DESRESDataArgs(
+                protein_id="2JOF",
+                lagtime=500,  # 100ns
+            ),
+            wandb_project="encoderops-2JOF-L",
         ),
     ),
     "l63": (
@@ -313,7 +363,9 @@ defaults = {
                 seed=42,
             ),
             model_args=MaskedCNNArgs(),
-            data_args=SSTDataArgs(history_len=0, augmentations=False, mask=True, data_source="CESM"),
+            data_args=SSTDataArgs(
+                history_len=0, augmentations=False, mask=True, data_source="CESM"
+            ),
             wandb_project="encoderops-ENSO",
             num_devices=1,
         ),
@@ -337,7 +389,9 @@ defaults = {
                 seed=42,
             ),
             model_args=MaskedCNNArgs(),
-            data_args=SSTDataArgs(history_len=12, augmentations=False, mask=True, data_source="ORAS5"),
+            data_args=SSTDataArgs(
+                history_len=12, augmentations=False, mask=True, data_source="ORAS5"
+            ),
             wandb_project="encoderops-ENSO",
             num_devices=1,
         ),
