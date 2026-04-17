@@ -19,7 +19,7 @@ We deploy the approach across multiple scientific domains, including the folding
 
 ## Installation
 
-We use `uv` for environment management.
+We use [`uv`](https://docs.astral.sh/uv/) for environment management.
 
 ```bash
 uv sync --no-install-package torch-scatter
