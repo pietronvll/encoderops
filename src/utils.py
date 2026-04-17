@@ -1,14 +1,50 @@
 import itertools
 import logging
 
-import mdtraj as md
 import numpy as np
-import pandas as pd
 import torch
 import linear_operator_learning as lol
 
 from time import perf_counter
 from lightning.pytorch.callbacks import Callback
+from lightning.pytorch.loggers import CSVLogger
+
+
+def build_run_logger(
+    *,
+    offline: bool,
+    project: str,
+    entity: str | None = None,
+    save_dir: str = "./logs",
+    name: str | None = None,
+    tags: list[str] | None = None,
+    config: dict | None = None,
+):
+    if offline:
+        return CSVLogger(save_dir=save_dir, name=name or project)
+
+    from lightning.pytorch.loggers import WandbLogger
+
+    return WandbLogger(
+        project=project,
+        entity=entity,
+        save_dir=save_dir,
+        name=name,
+        tags=tags,
+        config=config,
+    )
+
+
+def _require_mdtraj():
+    import mdtraj as md
+
+    return md
+
+
+def _require_pandas():
+    import pandas as pd
+
+    return pd
 
 
 def lin_svdvals(layer: torch.nn.Linear | torch.nn.Sequential) -> torch.Tensor:
@@ -137,6 +173,7 @@ def compute_descriptors(
             _feats.extend(names)
             _feats_info.update(descriptors_ids)
 
+    pd = _require_pandas()
     df = pd.DataFrame(np.hstack(_raw_data), columns=_feats)
     logging.info(f"Descriptors: {df.shape}")
     return df, _feats_info
@@ -144,6 +181,7 @@ def compute_descriptors(
 
 # DESCRIPTORS COMPUTATION
 def _CA_DISTANCES(traj):
+    md = _require_mdtraj()
     descriptors_ids = {}
     logging.info("Computing CA distances")
     table, _ = traj.top.to_dataframe()
@@ -171,6 +209,7 @@ def _CA_DISTANCES(traj):
 
 
 def _HYDROGEN_BONDS(traj, kind, _cached_dists=None):
+    md = _require_mdtraj()
     # H-BONDS DISTANCES / CONTACTS (donor-acceptor)
     # find donors (OH or NH)
     logging.info(f"Computing Hydrogen bonds {kind}")
@@ -268,6 +307,7 @@ def _HYDROGEN_BONDS(traj, kind, _cached_dists=None):
 
 
 def _DIHEDRALS(traj, kind, sincos=True):
+    md = _require_mdtraj()
     # Get topology
     table, _ = traj.top.to_dataframe()
 
@@ -320,6 +360,7 @@ def _DIHEDRALS(traj, kind, sincos=True):
 
 
 def _DISULFIDE_DIHEDRALS(traj, sincos=True):
+    md = _require_mdtraj()
     table, bonds = traj.top.to_dataframe()
 
     # filter S atoms belonging to CYS

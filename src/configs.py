@@ -144,8 +144,9 @@ class Configs:
     data_args: DESRESDataArgs | Lorenz63DataArgs | CalixareneDataArgs | SSTDataArgs
     wandb_project: str
     wandb_entity: str | None = None
-    offline: bool = False
-    num_devices: int = -1
+    offline: bool = True
+    accelerator: str = "auto"
+    num_devices: int = 1
     dataloader_workers: int = 8
 
 
@@ -338,6 +339,35 @@ defaults = {
             ),
             model_args=MaskedCNNArgs(),
             data_args=SSTDataArgs(history_len=12, augmentations=False, mask=True, data_source="ORAS5"),
+            wandb_project="encoderops-ENSO",
+            num_devices=1,
+        ),
+    ),
+    "ENSO": (
+        "ENSO ORAS5",
+        Configs(
+            trainer_args=TrainerArgs(
+                latent_dim=256,
+                encoder_lr=1e-3,
+                linear_lr=1e-3,
+                epochs=100,
+                batch_size=64,
+                max_grad_norm=0.2,
+                normalize_lin=True,
+                regularization=0,
+                loss="l2",
+                min_encoder_lr=1e-5,
+                normalize_latents="simnorm",
+                simnorm_dim=2,
+                seed=42,
+            ),
+            model_args=MaskedCNNArgs(),
+            data_args=SSTDataArgs(
+                history_len=12,
+                augmentations=False,
+                mask=True,
+                data_source="ORAS5",
+            ),
             wandb_project="encoderops-ENSO",
             num_devices=1,
         ),

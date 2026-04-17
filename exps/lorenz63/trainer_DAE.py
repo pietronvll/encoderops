@@ -3,12 +3,11 @@ import tyro
 
 from lightning import Trainer
 from lightning.pytorch.callbacks import ModelCheckpoint
-from lightning.pytorch.loggers import WandbLogger
 
 from src.configs import Configs, defaults
 from src.data import Lorenz63DataModule
 from src.modules import MLP
-from src.utils import EpochTimerCallback
+from src.utils import EpochTimerCallback, build_run_logger
 
 from exps.lorenz63.dae import DynamicAE
 from kooplearn.data import traj_to_contexts
@@ -106,13 +105,13 @@ def main(cfg: Configs):
         persistent_workers=True,
         )
 
-    wandb_logger = WandbLogger(
+    run_logger = build_run_logger(
+        offline=cfg.offline,
         project=cfg.wandb_project,
         entity=cfg.wandb_entity,
-        offline=cfg.offline,
         save_dir="./logs",
         tags=["DAE"],
-        name=f"DAE_rep{cfg.trainer_args.seed}",    
+        name=f"DAE_rep{cfg.trainer_args.seed}",
     )
 
     checkpoint_callback = ModelCheckpoint(
@@ -122,9 +121,9 @@ def main(cfg: Configs):
     timer = EpochTimerCallback()
     # Trainer
     trainer = Trainer(
-        logger=wandb_logger,
+        logger=run_logger,
         callbacks=[checkpoint_callback, timer],
-        accelerator="cuda",
+        accelerator=cfg.accelerator,
         devices=cfg.num_devices,
         max_epochs=cfg.trainer_args.epochs,
         log_every_n_steps=10,

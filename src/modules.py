@@ -1,13 +1,13 @@
-import timm
 import torch
 import torch.distributed
 from linear_operator_learning.nn import MLP as lolMLP
-from mlcolvar.core.nn.graph.schnet import SchNetModel
 
 
 class ResNet18(torch.nn.Module):
     def __init__(self, **model_args):
         super().__init__()
+        import timm
+
         self.model = timm.create_model("resnet18", **model_args)
 
     def forward(self, data):
@@ -34,6 +34,8 @@ class MLP(torch.nn.Module):
 class SchNet(torch.nn.Module):
     def __init__(self, **model_args):
         super().__init__()
+        from mlcolvar.core.nn.graph.schnet import SchNetModel
+
         self.model = SchNetModel(**model_args)
 
     def forward(self, data):
@@ -134,7 +136,7 @@ class EuclideanNorm(torch.nn.Module):
 class MaskedCNN(torch.nn.Module):
     """
     Masked CNN architecture with selectable capacity:
-        size \in {"small", "medium", "large"}
+        size in {"small", "medium", "large"}
     """
 
     CONFIGS = {
@@ -199,6 +201,13 @@ class MaskedCNN(torch.nn.Module):
 
     def prepare_batch(self, batch):
         return batch["x"], batch["y"]
+
+
+class TinyMaskedCNN(MaskedCNN):
+    """Backward-compatible alias for older ENSO checkpoints."""
+
+    def __init__(self, in_chans, num_classes, size="medium"):
+        super().__init__(in_chans=in_chans, num_classes=num_classes, size=size)
 
 
 class MaskedGlobalPooling(torch.nn.Module):

@@ -6,21 +6,12 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Literal
 
-import mdtraj
 import numpy as np
 import torch.distributed
 import xarray as xr
 from lightning import LightningDataModule
 from loguru import logger
-from mlcolvar.data.graph.atomic import AtomicNumberTable
-from mlcolvar.data.graph.utils import _create_dataset_from_configuration
-from mlcolvar.utils.io import (
-    _configures_from_trajectory,
-    _names_from_top,
-    _z_table_from_top,
-)
 from torch.utils.data import ConcatDataset, DataLoader, Dataset
-from torch_geometric.loader import DataLoader as PyGDataLoader
 
 import lmdb
 from src.configs import (
@@ -33,7 +24,13 @@ from src.configs import (
 from src.utils import FastTensorDataLoader
 
 
-def traj_to_confs(traj: mdtraj.Trajectory, system_selection: str | None = None):
+def traj_to_confs(traj, system_selection: str | None = None):
+    from mlcolvar.utils.io import (
+        _configures_from_trajectory,
+        _names_from_top,
+        _z_table_from_top,
+    )
+
     configs = _configures_from_trajectory(traj, system_selection=system_selection)
     z_table = _z_table_from_top([traj.top])
     atom_names = _names_from_top([traj.top])
@@ -41,6 +38,8 @@ def traj_to_confs(traj: mdtraj.Trajectory, system_selection: str | None = None):
 
 
 def mdtraj_load(trajectory_files: list[str], top: str, stride: int = 1000):
+    import mdtraj
+
     traj = mdtraj.load(trajectory_files, top=top, stride=stride)
     traj.top = mdtraj.core.trajectory.load_topology(top)
     return traj
@@ -85,6 +84,8 @@ class DESRESDataModule(LightningDataModule):
         self.data_path = self.parse_datapath(self.data_args.data_path)
 
     def train_dataloader(self):
+        from torch_geometric.loader import DataLoader as PyGDataLoader
+
         return PyGDataLoader(
             self.dataset,
             batch_size=self.args.batch_size,
@@ -175,6 +176,8 @@ class DESRESDataset(Dataset):
         return self.convert_to_pyg(data_binary), self.convert_to_pyg(data_lagged_binary)
 
     def convert_to_pyg(self, config_binary):
+        from mlcolvar.data.graph.utils import _create_dataset_from_configuration
+
         config = pickle.loads(config_binary)
         pyg_data = _create_dataset_from_configuration(
             config=config,
@@ -235,6 +238,8 @@ class CalixareneDataModule(LightningDataModule):
             )
 
     def setup(self, stage):
+        from mlcolvar.data.graph.atomic import AtomicNumberTable
+
         datasets = []
         atomic_numbers = []
         for molecule_id in self.data_args.molecule_ids:
@@ -270,6 +275,8 @@ class CalixareneDataModule(LightningDataModule):
         self.data_path = self.parse_datapath(self.data_args.data_path)
 
     def train_dataloader(self):
+        from torch_geometric.loader import DataLoader as PyGDataLoader
+
         return PyGDataLoader(
             self.dataset,
             batch_size=self.args.batch_size,
@@ -337,6 +344,8 @@ class CalixareneDataset(Dataset):
         return self.convert_to_pyg(config), self.convert_to_pyg(config_lagged)
 
     def convert_to_pyg(self, config):
+        from mlcolvar.data.graph.utils import _create_dataset_from_configuration
+
         pyg_data = _create_dataset_from_configuration(
             config=config,
             z_table=self.z_table,
@@ -521,7 +530,7 @@ class SSTDataModule(LightningDataModule):
         return state
 
     def load_state_dict(self, state):
-        self.data_args = Lorenz63DataArgs(**state["data_args"])
+        self.data_args = SSTDataArgs(**state["data_args"])
         self.num_workers = state["num_workers"]
         self.data_path = self.parse_datapath(self.data_args.data_path)
 

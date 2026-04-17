@@ -5,12 +5,12 @@ from dataclasses import asdict
 import tyro
 from lightning import Trainer
 from lightning.pytorch.callbacks import ModelCheckpoint
-from lightning.pytorch.loggers import WandbLogger
 
 from src.configs import Configs, defaults
 from src.data import CalixareneDataModule
 from src.model import EvolutionOperator
 from src.modules import SchNet
+from src.utils import build_run_logger
 
 
 def main(cfg: Configs):
@@ -20,10 +20,10 @@ def main(cfg: Configs):
     datamodule.prepare_data()
     datamodule.setup("fit")
 
-    wandb_logger = WandbLogger(
+    run_logger = build_run_logger(
+        offline=cfg.offline,
         project=cfg.wandb_project,
         entity=cfg.wandb_entity,
-        offline=cfg.offline,
         save_dir="./logs",
     )
 
@@ -32,9 +32,9 @@ def main(cfg: Configs):
     )
     # Trainer
     trainer = Trainer(
-        logger=wandb_logger,
+        logger=run_logger,
         callbacks=[checkpoint_callback],
-        accelerator="cuda",
+        accelerator=cfg.accelerator,
         devices=cfg.num_devices,
         max_epochs=cfg.trainer_args.epochs,
         log_every_n_steps=10,

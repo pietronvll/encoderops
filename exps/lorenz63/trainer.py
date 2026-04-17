@@ -5,13 +5,12 @@ import tyro
 
 from lightning.pytorch import Trainer, seed_everything
 from lightning.pytorch.callbacks import ModelCheckpoint
-from lightning.pytorch.loggers import WandbLogger
 
 from src.configs import Configs, defaults
 from src.data import Lorenz63DataModule
 from src.model import EvolutionOperator
 from src.modules import MLP
-from src.utils import EpochTimerCallback
+from src.utils import EpochTimerCallback, build_run_logger
 
 
 def main(cfg: Configs):
@@ -22,13 +21,13 @@ def main(cfg: Configs):
     datamodule.prepare_data()
     datamodule.setup("fit")
 
-    wandb_logger = WandbLogger(
+    run_logger = build_run_logger(
+        offline=cfg.offline,
         project=cfg.wandb_project,
         entity=cfg.wandb_entity,
-        offline=cfg.offline,
         save_dir="./logs",
         tags=["EvOp"],
-        name=f"EvOp_rep{cfg.trainer_args.seed}",    
+        name=f"EvOp_rep{cfg.trainer_args.seed}",
     )
 
     checkpoint_callback = ModelCheckpoint(
@@ -38,9 +37,9 @@ def main(cfg: Configs):
     timer = EpochTimerCallback()
     # Trainer
     trainer = Trainer(
-        logger=wandb_logger,
+        logger=run_logger,
         callbacks=[checkpoint_callback, timer],
-        accelerator="cuda",
+        accelerator=cfg.accelerator,
         devices=cfg.num_devices,
         max_epochs=cfg.trainer_args.epochs,
         log_every_n_steps=10,
