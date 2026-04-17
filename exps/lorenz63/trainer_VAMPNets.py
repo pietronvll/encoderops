@@ -5,7 +5,6 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 
 from src.configs import Configs, defaults
 from src.data import Lorenz63DataModule
-from src.modules import MLP
 from src.utils import EpochTimerCallback, build_run_logger
 
 from kooplearn.models.feature_maps.nn import NNFeatureMap
@@ -125,7 +124,7 @@ def main(cfg: Configs):
         seed=cfg.trainer_args.seed,
     )    
     feature_map.fit(train_dl, val_dl)
-    feature_map.save(checkpoint_callback.dirpath + f"/last.pt")
+    feature_map.save(checkpoint_callback.dirpath + "/last.pt")
 
 if __name__ == "__main__":
     config = tyro.extras.overridable_config_cli(defaults)

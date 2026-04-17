@@ -9,7 +9,7 @@ from scipy.linalg import eig
 
 from kooplearn._src.check_deps import check_torch_deps
 from kooplearn._src.serialization import pickle_load, pickle_save
-from kooplearn._src.utils import ShapeError, check_is_fitted
+from kooplearn._src.utils import check_is_fitted
 from kooplearn.abc import BaseModel
 from kooplearn.models.ae.utils import (
     decode_contexts,
@@ -164,7 +164,7 @@ class DynamicAE(BaseModel):
         predict_observables: bool = True,
         reencode_every: int = 0,
     ):
-        """
+        r"""
         Predicts the state or, if the system is stochastic, its expected value :math:`\mathbb{E}[X_t | X_0 = X]` after ``t`` instants given the initial conditions ``data.lookback(self.lookback_len)`` being the lookback slice of ``data``.
         If ``data.observables`` is not ``None``, returns the analogue quantity for the observable instead.
 
@@ -472,7 +472,5 @@ class DynamicAEModule(lightning.LightningModule):
         else:
             evolution_operator = self.evolution_operator
         Z_evolved = evolve_contexts(Z, lookback_len, evolution_operator)
-        X_evol = decode_contexts(
-            Z_evolved, self.decoder
-        )  # Should fail if the shape is wrong
+        decode_contexts(Z_evolved, self.decoder)  # Should fail if the shape is wrong
         assert Z.shape == Z_evolved.shape

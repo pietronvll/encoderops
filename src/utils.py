@@ -377,14 +377,14 @@ def _DISULFIDE_DIHEDRALS(traj, sincos=True):
         d_ij = md.compute_distances(traj[0], [[i, j]])[0][0]
         if d_ij < 0.25:
             # look for C atoms bonded with S
-            for k, l, _, _ in bonds:
+            for k, bonded_atom, _, _ in bonds:
                 if int(k) == i:
-                    c_i = int(l)
-                elif int(l) == i:
+                    c_i = int(bonded_atom)
+                elif int(bonded_atom) == i:
                     c_i = int(k)
                 if int(k) == j:
-                    c_j = int(l)
-                elif int(l) == j:
+                    c_j = int(bonded_atom)
+                elif int(bonded_atom) == j:
                     c_j = int(k)
 
             # compute feature
@@ -422,7 +422,7 @@ def contact_function(dists, r0: float = 1.0, d0: float = 0.0, n: int = 6, m: int
     return _y
 
 
-def get_residuals(l, Q, phi_X, phi_Y):
+def get_residuals(eigvals, Q, phi_X, phi_Y):
     # Compute the residuals as defined in Eq. 3.2 of M. Colbrook's ResDMD
     # https://doi.org/10.1017/jfm.2022.1052
     cov_X = lol.nn.stats.covariance(phi_X).cfloat()
@@ -430,7 +430,7 @@ def get_residuals(l, Q, phi_X, phi_Y):
     cov_Y = lol.nn.stats.covariance(phi_Y).cfloat()
 
     res2 = []
-    for i, eig in enumerate(l):
+    for i, eig in enumerate(eigvals):
         q = Q[:, i]
         num = np.vdot(q, (cov_Y - eig * cov_XY.T - eig.conj() * cov_XY + eig.abs()**2 * cov_X) @ q)
         den = np.vdot(q, cov_X @ q)

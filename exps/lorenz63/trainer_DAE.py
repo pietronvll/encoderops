@@ -6,7 +6,6 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 
 from src.configs import Configs, defaults
 from src.data import Lorenz63DataModule
-from src.modules import MLP
 from src.utils import EpochTimerCallback, build_run_logger
 
 from exps.lorenz63.dae import DynamicAE
@@ -166,7 +165,7 @@ def main(cfg: Configs):
         use_lstsq_for_evolution=False,
         seed=cfg.trainer_args.seed)
     dae.fit(train_dl, val_dl)
-    dae.save(checkpoint_callback.dirpath + f"/last.pt")
+    dae.save(checkpoint_callback.dirpath + "/last.pt")
 
 if __name__ == "__main__":
     config = tyro.extras.overridable_config_cli(defaults)
