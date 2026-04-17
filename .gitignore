@@ -21,3 +21,5 @@ logs
 
 # MacOS files
 .DS_Store
+demo-data/
+
